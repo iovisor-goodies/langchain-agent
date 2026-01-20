@@ -80,3 +80,7 @@ LangChainGo doesn't have first-class Ollama native tool calling in agent framewo
 
 - `github.com/tmc/langchaingo/llms/ollama` - Ollama LLM integration
 - `golang.org/x/crypto/ssh` - SSH client
+
+## Git
+
+- Do NOT add "Co-Authored-By: Claude" to commits
