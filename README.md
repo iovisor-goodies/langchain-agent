@@ -1,0 +1,99 @@
+# LangChain Agent
+
+Autonomous agent loop using [LangChainGo](https://github.com/tmc/langchaingo) + [Ollama](https://ollama.com/) for local LLM inference.
+
+## Features
+
+- **JSON tool calling** (not ReAct) - reliable with smaller models
+- **SSH tool** - execute commands on remote hosts
+- **Shell tool** - execute local commands
+- **MCP tool** - Kubernetes/OpenShift operations (stubbed)
+- **Conversation memory** - maintains context until cleared
+- **Honest error reporting** - no hallucination on failures
+
+## Quick Start
+
+```bash
+# Build
+go build -o langchain-agent .
+
+# Run (requires Ollama with llama3.1)
+ollama pull llama3.1
+./langchain-agent
+```
+
+## Usage
+
+```
+> ssh to admin@192.168.1.10 and tell me what platform it is
+[Agent] {"name": "ssh", "parameters": {"host": "admin@192.168.1.10", "command": "uname -a"}}
+[Tool Call] ssh: map[command:uname -a host:admin@192.168.1.10]
+[Tool Result] Linux server 5.15.0-generic x86_64 GNU/Linux
+[Answer] The server is running Linux (kernel 5.15.0) on x86_64 architecture.
+
+> check disk usage there
+[Agent] {"name": "ssh", "parameters": {"host": "admin@192.168.1.10", "command": "df -h"}}
+...
+```
+
+Commands:
+- `clear` - clear conversation history
+- `quit` / `exit` - exit
+
+## Options
+
+```bash
+./langchain-agent -model llama3.2    # Use smaller/faster model
+./langchain-agent -max-iter 5        # Limit agent iterations
+```
+
+## Architecture
+
+```
+langchain-agent/
+├── main.go              # REPL entry point
+├── agent/
+│   ├── agent.go         # Agent loop (tool dispatch, history)
+│   └── agent_test.go    # Tests with mock LLM
+├── llm/
+│   ├── ollama.go        # Ollama client, JSON parsing
+│   └── ollama_test.go   # Parsing tests
+└── tools/
+    ├── tool.go          # Tool interface
+    ├── ssh.go           # Remote execution
+    ├── shell.go         # Local execution
+    └── mcp.go           # MCP client (stubbed)
+```
+
+### How It Works
+
+1. User input → Agent builds messages (system prompt + history + input)
+2. Send to Ollama LLM
+3. LLM returns JSON tool call or final answer
+4. If tool call → execute tool, append result, loop back to step 2
+5. If final answer → return to user
+
+The agent maintains context across turns. Follow-up questions ("try grep vmx instead") apply to the same host/task.
+
+## Requirements
+
+- Go 1.21+
+- [Ollama](https://ollama.com/) running locally
+- `llama3.1` model (recommended) or `llama3.2`
+
+## SSH Authentication
+
+Uses standard SSH authentication:
+- ssh-agent
+- `~/.ssh/id_rsa`, `~/.ssh/id_ed25519`
+- Keys configured via `ssh-copy-id`
+
+## Testing
+
+```bash
+go test ./...
+```
+
+## License
+
+MIT
