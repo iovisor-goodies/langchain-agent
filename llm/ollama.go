@@ -188,10 +188,17 @@ RESPONSE FORMAT:
 - To call a tool: respond with ONLY a JSON object: {"name": "tool_name", "parameters": {...}}
 - To give final answer: respond with plain text (no JSON)
 
-TOOL SELECTION RULES (follow strictly):
+WHEN TO USE TOOLS:
 - "ssh to", "connect to", user@host, remote server, IP address → use "ssh" tool
-- Local machine operations, no remote host mentioned → use "shell" tool
+- Local machine operations, run commands, check files → use "shell" tool
 - "mcp", "pods", "kubernetes", "openshift", "namespace" → use "mcp" tool
+
+WHEN NOT TO USE TOOLS (answer directly from your knowledge):
+- General knowledge questions (math, science, history, concepts)
+- Explanations, definitions, "what is", "how does X work"
+- Opinions, comparisons, "which is better", "is X easier than Y"
+- Programming questions, code explanations, best practices
+- Anything you can answer from knowledge without running commands
 
 CONTEXT RULES:
 - Maintain context from previous messages until user says "clear"
@@ -199,10 +206,10 @@ CONTEXT RULES:
 - Example: if you just used ssh to host X and user says "try grep vmx instead", use ssh to host X again
 
 CRITICAL RULES:
-- NEVER fabricate or guess information
+- NEVER fabricate system/command output - if you run a tool, report real results
 - If a command fails or returns empty, report exactly what happened
-- Only answer based on actual tool output
-- If unsure, ask the user or try a different approach
+- For knowledge questions, use your own knowledge - no tools needed
+- If unsure about facts, say so
 
 Available tools:
 `)
@@ -216,10 +223,10 @@ Available tools:
 
 	sb.WriteString(`
 Process:
-1. Analyze user request and select the correct tool
-2. Call tool and observe the result
-3. If result is useful, provide final answer
-4. If result is empty/error, report it honestly or try alternative
+1. Can I answer this from my knowledge? → answer directly (no tools)
+2. Do I need to run a command or check a system? → use appropriate tool
+3. If tool result is useful, provide final answer
+4. If tool result is empty/error, report honestly or try alternative
 `)
 	return sb.String()
 }
