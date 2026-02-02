@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Acme Platform - Deployment Guide</title>
+</head>
+<body>
+    <h1>Deployment Guide</h1>
+
+    <p>This guide covers deploying the Acme Platform to Kubernetes clusters.</p>
+
+    <h2>Prerequisites</h2>
+    <ul>
+        <li>Kubernetes cluster (v1.28+) - EKS, GKE, or AKS</li>
+        <li>kubectl configured with cluster access</li>
+        <li>Helm 3.x installed</li>
+        <li>Docker registry access (ECR/GCR/ACR)</li>
+    </ul>
+
+    <h2>Environments</h2>
+    <p>We maintain three environments:</p>
+    <ul>
+        <li><strong>Development</strong> - dev.acme.internal - Single-node cluster for testing</li>
+        <li><strong>Staging</strong> - staging.acme.com - Production-like environment for QA</li>
+        <li><strong>Production</strong> - acme.com - Multi-region deployment (us-east-1, eu-west-1)</li>
+    </ul>
+
+    <h2>Deployment Process</h2>
+    <h3>1. Build and Push Images</h3>
+    <pre>
+# Build all service images
+make build-all
+
+# Push to registry
+make push-all TAG=v1.2.3
+    </pre>
+
+    <h3>2. Deploy Infrastructure</h3>
+    <pre>
+# Deploy databases and message queues
+helm upgrade --install acme-infra ./charts/infrastructure \
+    -f values/production.yaml \
+    --namespace acme-system
+    </pre>
+
+    <h3>3. Deploy Services</h3>
+    <pre>
+# Deploy all microservices
+helm upgrade --install acme-platform ./charts/platform \
+    -f values/production.yaml \
+    --namespace acme-services \
+    --set global.image.tag=v1.2.3
+    </pre>
+
+    <h3>4. Verify Deployment</h3>
+    <pre>
+# Check pod status
+kubectl get pods -n acme-services
+
+# Run smoke tests
+./scripts/smoke-test.sh production
+    </pre>
+
+    <h2>Rollback Procedure</h2>
+    <p>To rollback to a previous version:</p>
+    <pre>
+# List release history
+helm history acme-platform -n acme-services
+
+# Rollback to previous revision
+helm rollback acme-platform [REVISION] -n acme-services
+    </pre>
+
+    <h2>Scaling</h2>
+    <p>Services auto-scale based on CPU and memory metrics. Manual scaling:</p>
+    <pre>
+kubectl scale deployment order-service --replicas=10 -n acme-services
+    </pre>
+
+    <h2>Monitoring</h2>
+    <p>Monitor deployments via:</p>
+    <ul>
+        <li>Grafana dashboards: https://grafana.acme.internal</li>
+        <li>Prometheus metrics: https://prometheus.acme.internal</li>
+        <li>Jaeger tracing: https://jaeger.acme.internal</li>
+    </ul>
+
+    <h2>Troubleshooting</h2>
+    <p>Common issues and solutions:</p>
+    <ul>
+        <li><strong>Pods in CrashLoopBackOff</strong> - Check logs with kubectl logs, verify secrets exist</li>
+        <li><strong>Service unavailable</strong> - Check ingress configuration and certificate status</li>
+        <li><strong>High latency</strong> - Check resource limits and HPA scaling status</li>
+    </ul>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Acme Platform - System Architecture</title>
+</head>
+<body>
+    <h1>System Architecture</h1>
+
+    <p>The Acme Platform follows a three-tier microservices architecture deployed on Kubernetes.</p>
+
+    <h2>Architecture Diagram</h2>
+    <img src="images/architecture.png" alt="Acme Platform Architecture Diagram">
+
+    <h2>Web Tier</h2>
+    <p>The web tier consists of the following components:</p>
+    <ul>
+        <li><strong>API Gateway</strong> - Kong-based gateway handling authentication, rate limiting, and routing</li>
+        <li><strong>Web Frontend</strong> - React-based SPA served via Nginx</li>
+        <li><strong>CDN</strong> - CloudFront distribution for static assets</li>
+    </ul>
+
+    <h2>Application Tier</h2>
+    <p>The application tier contains our core microservices:</p>
+    <ul>
+        <li><strong>User Service</strong> - Handles authentication, user profiles, and preferences</li>
+        <li><strong>Catalog Service</strong> - Product catalog management with Elasticsearch backend</li>
+        <li><strong>Order Service</strong> - Order processing and fulfillment workflow</li>
+        <li><strong>Payment Service</strong> - Payment processing with Stripe and PayPal integration</li>
+        <li><strong>Inventory Service</strong> - Real-time inventory tracking across warehouses</li>
+        <li><strong>Recommendation Service</strong> - ML-based product recommendations using TensorFlow</li>
+    </ul>
+
+    <h2>Data Tier</h2>
+    <p>The data tier includes:</p>
+    <ul>
+        <li><strong>PostgreSQL</strong> - Primary relational database for transactional data</li>
+        <li><strong>Redis</strong> - Caching layer and session storage</li>
+        <li><strong>Elasticsearch</strong> - Product search and analytics</li>
+        <li><strong>Kafka</strong> - Event streaming between services</li>
+        <li><strong>S3</strong> - Object storage for product images and documents</li>
+    </ul>
+
+    <h2>Service Communication</h2>
+    <p>Services communicate using:</p>
+    <ul>
+        <li>Synchronous REST APIs for request/response patterns</li>
+        <li>Kafka events for asynchronous, event-driven workflows</li>
+        <li>gRPC for high-performance internal service calls</li>
+    </ul>
+
+    <h2>Security</h2>
+    <p>Security measures include:</p>
+    <ul>
+        <li>OAuth 2.0 / OIDC for authentication via Keycloak</li>
+        <li>mTLS between all services using Istio service mesh</li>
+        <li>Secrets management via HashiCorp Vault</li>
+        <li>WAF protection at the edge</li>
+    </ul>
+</body>
+</html>

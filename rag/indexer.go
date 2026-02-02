@@ -2,9 +2,10 @@ package rag
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"path/filepath"
+
+	"github.com/google/uuid"
 )
 
 // IndexerConfig holds configuration for the indexer
@@ -190,10 +191,9 @@ func (idx *Indexer) GetEmbeddings() *EmbeddingClient {
 	return idx.embeddings
 }
 
-// generateDocID creates a unique ID for a document
+// generateDocID creates a unique ID for a document (UUID v5)
 func generateDocID(path, content string) string {
-	h := sha256.New()
-	h.Write([]byte(path))
-	h.Write([]byte(content))
-	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+	// Use a fixed namespace UUID for wiki documents
+	namespace := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8") // URL namespace
+	return uuid.NewSHA1(namespace, []byte(path+content)).String()
 }
