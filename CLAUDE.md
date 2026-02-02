@@ -16,6 +16,7 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 - ✅ Conversation history/memory
 - ✅ Tool selection rules in prompt
 - ✅ Honest error reporting (no hallucination on failures)
+- ✅ Wiki RAG tool (Confluence HTML export with diagram support)
 
 **TODO:**
 - [ ] Real MCP client implementation
@@ -29,6 +30,8 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 "ssh to x@y.z and tell me what platform it is"
 "ssh to x@y.z and see why pods are failing"
 "use MCP server on test.my.domain and see what pods are failing in openshift namespace"
+"search wiki for deployment architecture"
+"what does the network diagram show"
 ```
 
 ## Build and Test Commands
@@ -37,11 +40,14 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 go build -o langchain-agent .
 ./langchain-agent                    # Run with default model (llama3.1)
 ./langchain-agent -model llama3.2    # Use smaller/faster model (less reliable)
+./langchain-agent --wiki ~/wiki/     # Enable wiki RAG (requires Qdrant)
+./langchain-agent --wiki ~/wiki/ --index-only  # Index only, then exit
 
 go test ./...                        # Run all tests
 go test -v ./agent/...               # Agent loop tests (with mock LLM)
 go test -v ./llm/...                 # JSON parsing tests
 go test -v ./tools/...               # Tool unit tests
+go test -v ./rag/...                 # RAG loader tests
 ```
 
 ## Architecture
@@ -55,11 +61,19 @@ langchain-agent/
 ├── llm/
 │   ├── ollama.go        # Ollama client, JSON tool call parsing
 │   └── ollama_test.go   # Parsing tests
+├── rag/
+│   ├── embeddings.go    # Ollama embeddings client (nomic-embed-text)
+│   ├── store.go         # Qdrant vector store wrapper
+│   ├── loader.go        # Confluence HTML parser
+│   ├── vision.go        # LLaVA image description
+│   ├── indexer.go       # Wiki indexing orchestration
+│   └── loader_test.go   # Loader tests
 └── tools/
     ├── tool.go          # Tool interface
     ├── ssh.go           # SSH remote execution
     ├── shell.go         # Local shell execution
     ├── mcp.go           # MCP client (stubbed)
+    ├── wiki.go          # Wiki RAG search tool
     └── *_test.go        # Tool tests
 ```
 
@@ -79,7 +93,9 @@ LangChainGo doesn't have first-class Ollama native tool calling in agent framewo
 ## Key Packages Used
 
 - `github.com/tmc/langchaingo/llms/ollama` - Ollama LLM integration
+- `github.com/tmc/langchaingo/embeddings` - Text embeddings
 - `golang.org/x/crypto/ssh` - SSH client
+- `golang.org/x/net/html` - HTML parsing for Confluence export
 
 ## Git
 

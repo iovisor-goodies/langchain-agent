@@ -1,75 +1,124 @@
-# Implementation Plan: LangChainGo Autonomous Agent
+# Plan: Confluence Wiki RAG with Diagrams
 
-## Completed
+**Status: COMPLETED**
 
-### Phase 1: Core Agent ✅
-- [x] Go module setup with langchaingo
-- [x] Ollama client with JSON tool calling
-- [x] Agent loop: prompt → LLM → parse → execute tool → repeat
-- [x] Tool interface and registration
+## Goal
+Add RAG capability to query Confluence wiki content including diagrams.
 
-### Phase 2: Tools ✅
-- [x] SSH tool (remote command execution via golang.org/x/crypto/ssh)
-- [x] Shell tool (local command execution)
-- [x] MCP tool (stubbed with mock Kubernetes data)
+## Implementation
 
-### Phase 3: Reliability Improvements ✅
-- [x] Tool selection rules in system prompt
-- [x] Clear tool descriptions (LOCAL vs REMOTE)
-- [x] Honest error reporting (no hallucination)
-- [x] Clear distinction between "no output" and "command failed"
+See `rag/` directory for implementation:
+- `embeddings.go` - Ollama embeddings client (nomic-embed-text)
+- `store.go` - Qdrant vector store wrapper
+- `loader.go` - Confluence HTML parser
+- `vision.go` - LLaVA image description with caching
+- `indexer.go` - Wiki indexing orchestration
 
-### Phase 4: Testing ✅
-- [x] Agent tests with mock LLM client
-- [x] LLM response parsing tests
-- [x] Tool unit tests (shell, mcp)
+See `tools/wiki.go` for the wiki search tool.
 
-## TODO
-
-### Phase 5: MCP Client
-- [ ] Research MCP protocol
-- [ ] Implement real MCP client
-- [ ] Connect to actual Kubernetes/OpenShift clusters
-
-### Phase 6: Enhancements
-- [ ] Streaming output (token-by-token)
-- [ ] Domain knowledge in prompts (common command patterns)
-- [ ] Few-shot examples for better tool usage
-- [ ] Better model support (test with llama3.1, qwen2.5)
-
-### Phase 7: Automation
-- [ ] Event-driven triggers
-- [ ] Webhook/API interface
-- [ ] Scheduled tasks
-
-## Files
-
-```
-langchain-agent/
-├── main.go              # REPL entry point
-├── agent/
-│   ├── agent.go         # Agent loop
-│   └── agent_test.go    # Mock LLM tests
-├── llm/
-│   ├── ollama.go        # Ollama client + parsing
-│   └── ollama_test.go   # Parsing tests
-└── tools/
-    ├── tool.go          # Interface
-    ├── ssh.go           # Remote execution
-    ├── shell.go         # Local execution
-    ├── mcp.go           # MCP stub
-    └── *_test.go        # Tests
-```
-
-## Quick Reference
+## Usage
 
 ```bash
-# Build and run
-go build -o langchain-agent . && ./langchain-agent
+# Prerequisites
+ollama pull nomic-embed-text
+ollama pull llava
+docker run -d -p 6333:6333 qdrant/qdrant
 
-# Run tests
-go test ./...
+# Index and run
+./langchain-agent --wiki ~/wiki/confluence-export/
 
-# Test with different model
-./langchain-agent -model llama3.1
+# Index only
+./langchain-agent --wiki ~/wiki/confluence-export/ --index-only
+
+# Query
+> search wiki for deployment architecture
+> what does the network diagram show
 ```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              INDEXING (one-time)                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Confluence HTML Export
+       │
+       ├── index.html, page1.html, page2.html...
+       └── images/diagram1.png, diagram2.png...
+       │
+       ▼
+  ┌──────────────────┐
+  │  HTML Parser     │
+  │  (loader.go)     │
+  └────────┬─────────┘
+           │
+           ├─────────────────────────────────┐
+           │                                 │
+           ▼                                 ▼
+  ┌─────────────────┐               ┌─────────────────┐
+  │  Text Chunks    │               │  Images/Diagrams│
+  │  (paragraphs,   │               │  (PNG, JPG)     │
+  │   headers)      │               └────────┬────────┘
+  └────────┬────────┘                        │
+           │                                 ▼
+           │                        ┌─────────────────┐
+           │                        │  LLaVA Model    │
+           │                        │  (describe      │
+           │                        │   diagram)      │
+           │                        └────────┬────────┘
+           │                                 │
+           ▼                                 ▼
+  ┌─────────────────┐               ┌─────────────────┐
+  │  nomic-embed    │               │  Image          │
+  │  (text → vec)   │               │  Descriptions   │
+  └────────┬────────┘               └────────┬────────┘
+           │                                 │
+           │                        ┌────────┴────────┐
+           │                        │  nomic-embed    │
+           │                        │  (desc → vec)   │
+           │                        └────────┬────────┘
+           │                                 │
+           └─────────────┬───────────────────┘
+                         │
+                         ▼
+                ┌─────────────────┐
+                │     Qdrant      │
+                │   (Docker)      │
+                │   :6333         │
+                └─────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              QUERYING (runtime)                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  User: "show me the network architecture diagram"
+       │
+       ▼
+  ┌─────────┐      ┌──────────────┐      ┌─────────────────┐
+  │  Agent  │ ───▶ │  Wiki Tool   │ ───▶ │  Embed query    │
+  │  Loop   │      │  (wiki.go)   │      │  via Ollama     │
+  └─────────┘      └──────────────┘      └────────┬────────┘
+       ▲                                          │
+       │                                          ▼
+       │                                 ┌─────────────────┐
+       │                                 │ Similarity      │
+       │                                 │ Search Qdrant   │
+       │                                 └────────┬────────┘
+       │                                          │
+       │           ┌──────────────┐               │
+       └───────────│ Results:     │◀──────────────┘
+                   │ - Text chunks│
+                   │ - Diagram    │
+                   │   descriptions
+                   └──────────────┘
+```
+
+## Completed Phases
+
+- [x] Phase 1: HTML Loader - Parse Confluence HTML, extract text, find images
+- [x] Phase 2: Image Description - LLaVA integration with JSON caching
+- [x] Phase 3: Embeddings + Storage - nomic-embed-text + Qdrant
+- [x] Phase 4: Wiki Tool - search action with metadata
+- [x] Phase 5: Integration - --wiki flag, indexing on startup

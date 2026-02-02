@@ -8,6 +8,7 @@ Autonomous agent loop using [LangChainGo](https://github.com/tmc/langchaingo) + 
 - **SSH tool** - execute commands on remote hosts
 - **Shell tool** - execute local commands
 - **MCP tool** - Kubernetes/OpenShift operations (stubbed)
+- **Wiki RAG tool** - search Confluence wiki exports with diagram support
 - **Conversation memory** - maintains context until cleared
 - **Honest error reporting** - no hallucination on failures
 
@@ -45,7 +46,42 @@ Commands:
 ```bash
 ./langchain-agent -model llama3.2    # Use smaller/faster model
 ./langchain-agent -max-iter 5        # Limit agent iterations
+./langchain-agent --wiki ~/wiki/     # Enable wiki RAG tool
+./langchain-agent --wiki ~/wiki/ --index-only  # Index wiki only
+./langchain-agent --qdrant http://localhost:6333  # Custom Qdrant URL
 ```
+
+## Wiki RAG
+
+Search Confluence wiki exports with semantic search and diagram understanding.
+
+### Prerequisites
+
+```bash
+# Pull required Ollama models
+ollama pull nomic-embed-text   # For embeddings
+ollama pull llava              # For image/diagram description
+
+# Run Qdrant vector store
+docker run -d -p 6333:6333 qdrant/qdrant
+```
+
+### Usage
+
+```bash
+# Export your Confluence space as HTML, then:
+./langchain-agent --wiki ~/wiki/confluence-export/
+
+> search wiki for deployment architecture
+> what does the network diagram show
+```
+
+The wiki tool:
+- Parses Confluence HTML exports
+- Extracts text (headings, paragraphs, lists, code)
+- Uses LLaVA to describe diagrams/images
+- Stores embeddings in Qdrant for semantic search
+- Returns relevant text chunks and diagram descriptions
 
 ## Architecture
 
@@ -58,11 +94,18 @@ langchain-agent/
 ├── llm/
 │   ├── ollama.go        # Ollama client, JSON parsing
 │   └── ollama_test.go   # Parsing tests
+├── rag/
+│   ├── embeddings.go    # Ollama embeddings (nomic-embed-text)
+│   ├── store.go         # Qdrant vector store
+│   ├── loader.go        # Confluence HTML parser
+│   ├── vision.go        # LLaVA image description
+│   └── indexer.go       # Wiki indexing pipeline
 └── tools/
     ├── tool.go          # Tool interface
     ├── ssh.go           # Remote execution
     ├── shell.go         # Local execution
-    └── mcp.go           # MCP client (stubbed)
+    ├── mcp.go           # MCP client (stubbed)
+    └── wiki.go          # Wiki RAG search
 ```
 
 ### How It Works
@@ -80,6 +123,7 @@ The agent maintains context across turns. Follow-up questions ("try grep vmx ins
 - Go 1.21+
 - [Ollama](https://ollama.com/) running locally
 - `llama3.1` model (recommended) or `llama3.2`
+- For wiki RAG: `nomic-embed-text`, `llava` models, and Qdrant (Docker)
 
 ## SSH Authentication
 

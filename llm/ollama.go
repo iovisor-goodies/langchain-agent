@@ -192,6 +192,7 @@ WHEN TO USE TOOLS:
 - "ssh to", "connect to", user@host, remote server, IP address → use "ssh" tool
 - Local machine operations, run commands, check files → use "shell" tool
 - "mcp", "pods", "kubernetes", "openshift", "namespace" → use "mcp" tool
+- "wiki", "confluence", "documentation", "diagram", "architecture" → use "wiki" tool
 
 WHEN NOT TO USE TOOLS (answer directly from your knowledge):
 - General knowledge questions (math, science, history, concepts)

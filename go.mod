@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/tmc/langchaingo v0.1.14
 	golang.org/x/crypto v0.47.0
+	golang.org/x/net v0.48.0
 )
 
 require (
