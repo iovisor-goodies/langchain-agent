@@ -55,6 +55,8 @@ Commands:
 
 Search Confluence wiki exports with semantic search and diagram understanding.
 
+See [docs/confluence-import.md](docs/confluence-import.md) for detailed import instructions.
+
 ### Prerequisites
 
 ```bash
