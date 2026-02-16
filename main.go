@@ -79,7 +79,7 @@ func main() {
 		fmt.Println("Wiki tool enabled.")
 	}
 
-	fmt.Println("Type 'quit' to exit, 'clear' to clear history")
+	fmt.Println("Type /help for commands")
 	fmt.Println("---")
 
 	// Create agent
@@ -109,12 +109,20 @@ func main() {
 		}
 
 		switch strings.ToLower(input) {
-		case "quit", "exit":
+		case "quit", "exit", "/exit":
 			fmt.Println("Goodbye!")
 			return
-		case "clear":
+		case "clear", "/clear":
 			ag.ClearHistory()
 			fmt.Println("History cleared.")
+			continue
+		case "/help":
+			fmt.Println("Commands:")
+			fmt.Println("  /help   - Show this help message")
+			fmt.Println("  /clear  - Clear conversation history")
+			fmt.Println("  /exit   - Exit the agent")
+			fmt.Println("")
+			fmt.Println("Anything else is sent to the LLM as a prompt.")
 			continue
 		}
 
