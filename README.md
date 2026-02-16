@@ -7,7 +7,7 @@ Autonomous agent loop using [LangChainGo](https://github.com/tmc/langchaingo) + 
 - **JSON tool calling** (not ReAct) - reliable with smaller models
 - **SSH tool** - execute commands on remote hosts
 - **Shell tool** - execute local commands
-- **MCP tool** - Kubernetes/OpenShift operations (stubbed)
+- **MCP tool** - connect to any MCP server via stdio (e.g., filesystem, Kubernetes)
 - **Wiki RAG tool** - search Confluence wiki exports with diagram support
 - **Conversation memory** - maintains context until cleared
 - **Honest error reporting** - no hallucination on failures
@@ -49,6 +49,7 @@ Commands:
 ./langchain-agent --wiki ~/wiki/     # Enable wiki RAG tool
 ./langchain-agent --wiki ~/wiki/ --index-only  # Index wiki only
 ./langchain-agent --qdrant http://localhost:6333  # Custom Qdrant URL
+./langchain-agent --mcp "mcp-filesystem-server /tmp"  # Enable MCP tool
 ```
 
 ## Wiki RAG
@@ -106,7 +107,7 @@ langchain-agent/
     ├── tool.go          # Tool interface
     ├── ssh.go           # Remote execution
     ├── shell.go         # Local execution
-    ├── mcp.go           # MCP client (stubbed)
+    ├── mcp.go           # MCP client (real, via mcp-go SDK)
     └── wiki.go          # Wiki RAG search
 ```
 

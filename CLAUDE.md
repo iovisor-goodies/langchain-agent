@@ -12,14 +12,13 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 - ✅ Agent loop with tool dispatch
 - ✅ SSH tool (remote command execution)
 - ✅ Shell tool (local command execution)
-- ✅ MCP tool (stubbed with mock data)
+- ✅ MCP tool (real client via mark3labs/mcp-go, stdio transport)
 - ✅ Conversation history/memory
 - ✅ Tool selection rules in prompt
 - ✅ Honest error reporting (no hallucination on failures)
 - ✅ Wiki RAG tool (Confluence HTML export with diagram support)
 
 **TODO:**
-- [ ] Real MCP client implementation
 - [ ] Streaming output
 - [ ] Domain knowledge improvements (command patterns)
 - [ ] Event-driven automation
@@ -29,7 +28,8 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 ```
 "ssh to x@y.z and tell me what platform it is"
 "ssh to x@y.z and see why pods are failing"
-"use MCP server on test.my.domain and see what pods are failing in openshift namespace"
+"list files in /tmp"                     # via --mcp with filesystem server
+"read the file /tmp/test.txt"            # via --mcp with filesystem server
 "search wiki for deployment architecture"
 "what does the network diagram show"
 ```
@@ -42,12 +42,14 @@ go build -o langchain-agent .
 ./langchain-agent -model llama3.2    # Use smaller/faster model (less reliable)
 ./langchain-agent --wiki ~/wiki/     # Enable wiki RAG (requires Qdrant)
 ./langchain-agent --wiki ~/wiki/ --index-only  # Index only, then exit
+./langchain-agent --mcp "mcp-filesystem-server /tmp"  # Enable MCP tool
 
 go test ./...                        # Run all tests
 go test -v ./agent/...               # Agent loop tests (with mock LLM)
 go test -v ./llm/...                 # JSON parsing tests
 go test -v ./tools/...               # Tool unit tests
 go test -v ./rag/...                 # RAG loader tests
+go test -tags integration -v ./tools/...  # MCP integration tests (needs mcp-filesystem-server)
 ```
 
 ## Architecture
@@ -72,7 +74,7 @@ langchain-agent/
     ├── tool.go          # Tool interface
     ├── ssh.go           # SSH remote execution
     ├── shell.go         # Local shell execution
-    ├── mcp.go           # MCP client (stubbed)
+    ├── mcp.go           # MCP client (real, via mcp-go SDK)
     ├── wiki.go          # Wiki RAG search tool
     └── *_test.go        # Tool tests
 ```
@@ -94,6 +96,7 @@ LangChainGo doesn't have first-class Ollama native tool calling in agent framewo
 
 - `github.com/tmc/langchaingo/llms/ollama` - Ollama LLM integration
 - `github.com/tmc/langchaingo/embeddings` - Text embeddings
+- `github.com/mark3labs/mcp-go` - MCP client (stdio transport)
 - `golang.org/x/crypto/ssh` - SSH client
 - `golang.org/x/net/html` - HTML parsing for Confluence export
 

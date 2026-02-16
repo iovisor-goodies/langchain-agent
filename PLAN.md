@@ -1,280 +1,129 @@
-# Plan: Confluence Wiki RAG with Diagrams
+# Plan: Replace Stubbed MCP Tool with Real MCP Client
 
-**Status: COMPLETED**
+## Context
 
-## Goal
-Add RAG capability to query Confluence wiki content including diagrams.
+The MCP tool (`tools/mcp.go`) is fully stubbed — it returns hardcoded Kubernetes mock data and never connects to any server. We're replacing it with a real MCP client using the `mark3labs/mcp-go` SDK, tested against `mcp-filesystem-server` (a Go binary that exposes filesystem operations over MCP stdio).
 
-## Implementation
+## Approach: Single Wrapper Tool
 
-See `rag/` directory for implementation:
-- `embeddings.go` - Ollama embeddings client (nomic-embed-text)
-- `store.go` - Qdrant vector store wrapper
-- `loader.go` - Confluence HTML parser
-- `vision.go` - LLaVA image description with caching
-- `indexer.go` - Wiki indexing orchestration
+Keep MCPTool as a single `tools.Tool` that wraps all MCP server tools via `tool_name` + `arguments` parameters. This avoids changes to the agent/tool dispatch and keeps the wiring simple. The MCP server's available tools are discovered dynamically at startup via `ListTools`.
 
-See `tools/wiki.go` for the wiki search tool.
+## Steps
 
-## Usage
-
+### 1. Add dependency
 ```bash
-# Prerequisites
-ollama pull nomic-embed-text
-ollama pull llava
-docker run -d -p 6333:6333 qdrant/qdrant
-
-# Index and run
-./langchain-agent --wiki ~/wiki/confluence-export/
-
-# Index only
-./langchain-agent --wiki ~/wiki/confluence-export/ --index-only
-
-# Query
-> search wiki for deployment architecture
-> what does the network diagram show
+go get github.com/mark3labs/mcp-go@latest
 ```
 
-## Architecture
+### 2. Rewrite `tools/mcp.go`
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              INDEXING (one-time)                            │
-└─────────────────────────────────────────────────────────────────────────────┘
+- Define `MCPClient` interface (for testability):
+  ```go
+  type MCPClient interface {
+      ListTools(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+      CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error)
+      Close() error
+  }
+  ```
 
-  Confluence HTML Export
-       │
-       ├── index.html, page1.html, page2.html...
-       └── images/diagram1.png, diagram2.png...
-       │
-       ▼
-  ┌──────────────────┐
-  │  HTML Parser     │
-  │  (loader.go)     │
-  └────────┬─────────┘
-           │
-           ├─────────────────────────────────┐
-           │                                 │
-           ▼                                 ▼
-  ┌─────────────────┐               ┌─────────────────┐
-  │  Text Chunks    │               │  Images/Diagrams│
-  │  (paragraphs,   │               │  (PNG, JPG)     │
-  │   headers)      │               └────────┬────────┘
-  └────────┬────────┘                        │
-           │                                 ▼
-           │                        ┌─────────────────┐
-           │                        │  LLaVA Model    │
-           │                        │  (describe      │
-           │                        │   diagram)      │
-           │                        └────────┬────────┘
-           │                                 │
-           ▼                                 ▼
-  ┌─────────────────┐               ┌─────────────────┐
-  │  nomic-embed    │               │  Image          │
-  │  (text → vec)   │               │  Descriptions   │
-  └────────┬────────┘               └────────┬────────┘
-           │                                 │
-           │                        ┌────────┴────────┐
-           │                        │  nomic-embed    │
-           │                        │  (desc → vec)   │
-           │                        └────────┬────────┘
-           │                                 │
-           └─────────────┬───────────────────┘
-                         │
-                         ▼
-                ┌─────────────────┐
-                │     Qdrant      │
-                │   (Docker)      │
-                │   :6333         │
-                └─────────────────┘
+- New `MCPTool` struct with state:
+  ```go
+  type MCPTool struct {
+      client    MCPClient
+      serverCmd string
+      tools     []mcp.Tool
+      toolMap   map[string]mcp.Tool
+  }
+  ```
 
+- `NewMCPTool(ctx, command, args)` constructor:
+  1. `client.NewStdioMCPClient(command, nil, args...)` — spawns server process
+  2. `client.Initialize(ctx, ...)` — MCP handshake
+  3. `client.ListTools(ctx, ...)` — discover available tools, cache them
+  4. Return ready-to-use `*MCPTool`
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              QUERYING (runtime)                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+- `Name()` → `"mcp"` (unchanged)
 
-  User: "show me the network architecture diagram"
-       │
-       ▼
-  ┌─────────┐      ┌──────────────┐      ┌─────────────────┐
-  │  Agent  │ ───▶ │  Wiki Tool   │ ───▶ │  Embed query    │
-  │  Loop   │      │  (wiki.go)   │      │  via Ollama     │
-  └─────────┘      └──────────────┘      └────────┬────────┘
-       ▲                                          │
-       │                                          ▼
-       │                                 ┌─────────────────┐
-       │                                 │ Similarity      │
-       │                                 │ Search Qdrant   │
-       │                                 └────────┬────────┘
-       │                                          │
-       │           ┌──────────────┐               │
-       └───────────│ Results:     │◀──────────────┘
-                   │ - Text chunks│
-                   │ - Diagram    │
-                   │   descriptions
-                   └──────────────┘
+- `Description()` → dynamically lists discovered tool names
+
+- `Parameters()` → JSON schema with:
+  - `tool_name` (string, required, enum of discovered tools with descriptions)
+  - `arguments` (object, optional, tool-specific)
+
+- `Call(ctx, params)` →
+  1. Extract `tool_name`, validate against discovered tools
+  2. Extract `arguments` map
+  3. `client.CallTool(ctx, req)` — proxy to MCP server
+  4. Extract `TextContent` from result, return as string
+  5. Handle `IsError` flag from server
+
+- `Close()` → close the underlying client
+
+### 3. Add `Closeable` interface to `tools/tool.go`
+
+```go
+type Closeable interface {
+    Close() error
+}
 ```
 
-## Completed Phases
+### 4. Update `main.go`
 
-- [x] Phase 1: HTML Loader - Parse Confluence HTML, extract text, find images
-- [x] Phase 2: Image Description - LLaVA integration with JSON caching
-- [x] Phase 3: Embeddings + Storage - nomic-embed-text + Qdrant
-- [x] Phase 4: Wiki Tool - search action with metadata
-- [x] Phase 5: Integration - --wiki flag, indexing on startup
+- Add `--mcp` flag: `flag.String("mcp", "", "MCP server command (e.g., 'mcp-filesystem-server /tmp')")`
+- Remove default `&tools.MCPTool{}` from tool list (MCP only when `--mcp` provided)
+- When `--mcp` is set: parse command string, call `tools.NewMCPTool(ctx, cmd, args)`, append to tool list
+- `defer mcpTool.Close()` for cleanup
+- Print discovered tool count on startup
 
-## How It Works (Under the Hood)
+### 5. Update system prompt in `llm/ollama.go`
 
-### Indexing Pipeline
-
+Change line 194 from:
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  1. HTML PARSING (rag/loader.go)                                        │
-└─────────────────────────────────────────────────────────────────────────┘
-     │
-     │  Walks wiki directory, parses each .html file
-     │  using golang.org/x/net/html
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Extracts:                                                              │
-│  • <h1>-<h6> → heading chunks                                           │
-│  • <p> → paragraph chunks                                               │
-│  • <li> → list item chunks                                              │
-│  • <pre>/<code> → code chunks                                           │
-│  • <img src="..."> → image references                                   │
-└─────────────────────────────────────────────────────────────────────────┘
-     │
-     ├──────────────────────────────────┐
-     │                                  │
-     ▼                                  ▼
-┌──────────────────────┐    ┌──────────────────────────────────────────┐
-│  Text chunks         │    │  Images (PNG, JPG, etc.)                 │
-│  (split if >500      │    │                                          │
-│   chars)             │    │  Sent to LLaVA via Ollama API:           │
-└──────────┬───────────┘    │  POST /api/generate                      │
-           │                │  {"model": "llava",                      │
-           │                │   "images": ["base64..."],               │
-           │                │   "prompt": "Describe this diagram..."}  │
-           │                └──────────────────┬───────────────────────┘
-           │                                   │
-           │                                   ▼
-           │                ┌──────────────────────────────────────────┐
-           │                │  LLaVA output (cached in .vision_cache): │
-           │                │  "This is an architecture diagram of a   │
-           │                │   web application system. It shows..."   │
-           │                └──────────────────┬───────────────────────┘
-           │                                   │
-           └───────────────┬───────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  2. EMBEDDING (rag/embeddings.go)                                       │
-│                                                                         │
-│  For each chunk, call Ollama:                                           │
-│  POST http://localhost:11434/api/embeddings                             │
-│  {"model": "nomic-embed-text", "prompt": "chunk text..."}               │
-│                                                                         │
-│  Returns 768-dimensional float32 vector per chunk                       │
-│  e.g., [-0.156, 0.712, -3.567, 0.843, ...]                              │
-│                                                                         │
-│  Text with similar meaning → vectors close together in 768D space       │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  3. STORAGE (rag/store.go → Qdrant)                                     │
-│                                                                         │
-│  PUT http://localhost:6333/collections/confluence_wiki/points           │
-│  {                                                                      │
-│    "points": [                                                          │
-│      {                                                                  │
-│        "id": "uuid-v5-hash",                                            │
-│        "vector": [0.1, 0.2, ...],  // 768 floats                        │
-│        "payload": {                                                     │
-│          "content": "The Acme Platform...",                             │
-│          "source_type": "text",      // or "image"                      │
-│          "page_title": "Architecture",                                  │
-│          "image_path": "/path/to/img.png"  // if image                  │
-│        }                                                                │
-│      }                                                                  │
-│    ]                                                                    │
-│  }                                                                      │
-│                                                                         │
-│  Qdrant stores vectors in HNSW index (Hierarchical Navigable            │
-│  Small World graph) for fast approximate nearest neighbor search        │
-└─────────────────────────────────────────────────────────────────────────┘
+- "mcp", "pods", "kubernetes", "openshift", "namespace" → use "mcp" tool
+```
+To:
+```
+- "mcp", file operations on MCP server, MCP tool calls → use "mcp" tool
 ```
 
-### Query Pipeline
+### 6. Rewrite `tools/mcp_test.go` (unit tests)
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  User: "search wiki for architecture diagram"                           │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  1. LLM decides to use wiki tool (tools/wiki.go)                        │
-│     {"name": "wiki", "parameters": {"action": "search",                 │
-│                                     "query": "architecture diagram"}}   │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  2. EMBED QUERY                                                         │
-│     Same nomic-embed-text model → 768D vector for query                 │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  3. VECTOR SIMILARITY SEARCH                                            │
-│     POST http://localhost:6333/collections/confluence_wiki/points/search│
-│     {"vector": [query embedding], "limit": 5}                           │
-│                                                                         │
-│     Qdrant computes cosine similarity between query vector and all      │
-│     stored vectors, returns top matches                                 │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  4. RESULTS                                                             │
-│     Score 0.689: [IMAGE] "This is an architecture diagram..."           │
-│     Score 0.571: [TEXT] "three-tier microservices architecture..."      │
-│     Score 0.550: [TEXT] "modern, scalable e-commerce solution..."       │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  5. LLM synthesizes final answer from retrieved context                 │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+- Mock `MCPClient` implementation returning controlled data
+- Tests: Name, Description (includes tool names), Parameters (enum matches), Call success, Call missing tool_name, Call unknown tool, Call with IsError result, Call with client error, Close
 
-### Why It Works: Semantic Similarity
+### 7. Add `tools/mcp_integration_test.go` (build tag `integration`)
 
-The key insight is **semantic similarity via embeddings**:
+- Skip if `mcp-filesystem-server` not in PATH
+- Create temp dir with test files
+- Test `list_directory`, `read_file` through the full MCPTool
 
-1. "architecture diagram" and "This is an architecture diagram of a web application" have similar *meaning*
-2. `nomic-embed-text` encodes this meaning into 768-dimensional vectors
-3. Vectors for semantically similar text are geometrically close (high cosine similarity)
-4. This is why the image description (generated by LLaVA) matches diagram queries - even though the user never typed those exact words
+### 8. Update docs
 
-### API Endpoints Used
+- `CLAUDE.md`: move MCP from TODO to Working, add `--mcp` to usage
+- `README.md`: update MCP tool description, add `--mcp` example
 
-| Service | Endpoint | Purpose |
-|---------|----------|---------|
-| Ollama | `POST /api/embeddings` | Generate text embeddings |
-| Ollama | `POST /api/generate` | LLaVA image description |
-| Qdrant | `PUT /collections/{name}` | Create collection |
-| Qdrant | `PUT /collections/{name}/points` | Store vectors |
-| Qdrant | `POST /collections/{name}/points/search` | Similarity search |
+## Files to Modify
 
-### Test Results
+| File | Change |
+|------|--------|
+| `tools/mcp.go` | Full rewrite (~130 lines) |
+| `tools/mcp_test.go` | Full rewrite with mock client (~150 lines) |
+| `tools/mcp_integration_test.go` | **New** — integration tests (~50 lines) |
+| `tools/tool.go` | Add `Closeable` interface (~4 lines) |
+| `main.go` | Add `--mcp` flag, conditional init, defer close |
+| `llm/ollama.go` | Update one line in tool routing keywords |
+| `CLAUDE.md` | Update status and usage |
+| `README.md` | Update MCP section |
 
-Tested with sample wiki (3 HTML pages + 1 diagram):
+## Verification
 
-| Query | Top Result Type | Score |
-|-------|----------------|-------|
-| "system architecture" | IMAGE (LLaVA desc) | 0.627 |
-| "deployment kubernetes" | TEXT | 0.714 |
-| "diagram" | IMAGE (LLaVA desc) | 0.689 |
+1. `go build -o langchain-agent .` — compiles
+2. `go test ./tools/...` — unit tests pass (mock client)
+3. Install server: `go install github.com/mark3labs/mcp-filesystem-server@latest`
+4. Integration test: `go test -tags integration ./tools/...`
+5. Manual test:
+   ```bash
+   ./langchain-agent --mcp "mcp-filesystem-server /tmp"
+   > list files in /tmp
+   > read the file /tmp/test.txt
+   ```
