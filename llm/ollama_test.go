@@ -85,6 +85,44 @@ func TestParseResponse_ValidToolCall(t *testing.T) {
 	}
 }
 
+func TestParseResponse_ToolCallTruncatesHallucination(t *testing.T) {
+	client := &Client{}
+
+	tests := []struct {
+		name        string
+		content     string
+		wantContent string
+	}{
+		{
+			name:        "hallucinated result after JSON",
+			content:     "{\"name\": \"mcp\", \"parameters\": {\"tool_name\": \"read_file\", \"arguments\": {\"path\": \"/tmp/test.txt\"}}}\n\nResult:\nThe file contains hello world.",
+			wantContent: "{\"name\": \"mcp\", \"parameters\": {\"tool_name\": \"read_file\", \"arguments\": {\"path\": \"/tmp/test.txt\"}}}",
+		},
+		{
+			name:        "text before and hallucination after JSON",
+			content:     "I need to check. {\"name\": \"shell\", \"parameters\": {\"command\": \"whoami\"}} Let me do that.",
+			wantContent: "I need to check. {\"name\": \"shell\", \"parameters\": {\"command\": \"whoami\"}}",
+		},
+		{
+			name:        "just JSON no hallucination",
+			content:     "{\"name\": \"shell\", \"parameters\": {\"command\": \"ls\"}}",
+			wantContent: "{\"name\": \"shell\", \"parameters\": {\"command\": \"ls\"}}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := client.parseResponse(tt.content)
+			if len(resp.ToolCalls) == 0 {
+				t.Fatal("expected tool call, got none")
+			}
+			if resp.Content != tt.wantContent {
+				t.Errorf("content = %q, want %q", resp.Content, tt.wantContent)
+			}
+		})
+	}
+}
+
 func TestParseResponse_FinalAnswer(t *testing.T) {
 	client := &Client{}
 

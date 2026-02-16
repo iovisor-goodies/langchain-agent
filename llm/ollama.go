@@ -126,6 +126,9 @@ func (c *Client) parseResponse(content string) *Response {
 						Name:   name,
 						Params: params,
 					})
+					// Truncate content to just the tool call JSON,
+					// discarding any hallucinated output after it
+					resp.Content = strings.TrimSpace(content[:idx+endIdx+1])
 					return resp
 				}
 			}
@@ -191,7 +194,7 @@ RESPONSE FORMAT:
 WHEN TO USE TOOLS:
 - "ssh to", "connect to", user@host, remote server, IP address → use "ssh" tool
 - Local machine operations, run commands, check files → use "shell" tool
-- "mcp", "pods", "kubernetes", "openshift", "namespace" → use "mcp" tool
+- "mcp", file operations on MCP server, MCP tool calls → use "mcp" tool
 - "wiki", "confluence", "documentation", "diagram", "architecture" → use "wiki" tool
 
 WHEN NOT TO USE TOOLS (answer directly from your knowledge):
