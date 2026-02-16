@@ -10,7 +10,7 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 
 **Working:**
 - ✅ Agent loop with tool dispatch
-- ✅ SSH tool (remote command execution)
+- ✅ SSH tool (remote command execution, ssh-agent + interactive password fallback)
 - ✅ Shell tool (local command execution)
 - ✅ MCP tool (real client via mark3labs/mcp-go, stdio transport)
 - ✅ Conversation history/memory
@@ -90,6 +90,7 @@ langchain-agent/
 - Explicit tool selection rules in prompt to prevent wrong tool choice
 - Clear error messages distinguish "no output" from "command failed"
 - `llm.ChatClient` interface allows mocking in tests
+- SSH auth: tries ssh-agent → key files → interactive password prompt (like `ssh` itself)
 
 ## Research Findings
 
@@ -104,6 +105,7 @@ LangChainGo doesn't have first-class Ollama native tool calling in agent framewo
 - `github.com/tmc/langchaingo/embeddings` - Text embeddings
 - `github.com/mark3labs/mcp-go` - MCP client (stdio transport)
 - `golang.org/x/crypto/ssh` - SSH client
+- `golang.org/x/term` - Terminal password input (hidden)
 - `golang.org/x/net/html` - HTML parsing for Confluence export
 
 ## Git
