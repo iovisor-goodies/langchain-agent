@@ -52,6 +52,20 @@ Commands:
 ./langchain-agent --mcp "mcp-filesystem-server /tmp"  # Enable MCP tool
 ```
 
+## Tool Routing
+
+The agent uses keyword matching in the system prompt to decide which tool to use:
+
+| Prompt pattern | Tool | Examples |
+|---|---|---|
+| "ssh to", "connect to", user@host, IP address | **ssh** | "ssh to root@10.0.0.1 and check uptime" |
+| Local operations, run commands, check local files | **shell** | "list running processes", "what's my hostname" |
+| "mcp", MCP tool calls | **mcp** | "use mcp to list files in /tmp" |
+| "wiki", "confluence", "documentation", "diagram" | **wiki** | "search wiki for deployment architecture" |
+| Knowledge questions, explanations, opinions | *direct answer* | "what is a container?", "is Go faster than Python?" |
+
+**Note:** MCP requires explicitly saying "mcp" in the prompt. The routing keywords are not dynamically generated from discovered MCP tools.
+
 ## Wiki RAG
 
 Search Confluence wiki exports with semantic search and diagram understanding.

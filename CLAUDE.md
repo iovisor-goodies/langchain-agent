@@ -26,13 +26,19 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 ## Use Cases
 
 ```
-"ssh to x@y.z and tell me what platform it is"
-"ssh to x@y.z and see why pods are failing"
-"list files in /tmp"                     # via --mcp with filesystem server
-"read the file /tmp/test.txt"            # via --mcp with filesystem server
-"search wiki for deployment architecture"
-"what does the network diagram show"
+"ssh to x@y.z and tell me what platform it is"   # → ssh tool
+"ssh to x@y.z and see why pods are failing"       # → ssh tool
+"list running processes"                          # → shell tool
+"check disk space"                                # → shell tool
+"use mcp to list files in /tmp"                   # → mcp tool (requires --mcp)
+"use mcp to read the file /tmp/test.txt"          # → mcp tool (requires --mcp)
+"search wiki for deployment architecture"         # → wiki tool (requires --wiki)
+"what does the network diagram show"              # → wiki tool (requires --wiki)
+"what is a container?"                            # → direct answer (no tool)
+"is Go faster than Python?"                       # → direct answer (no tool)
 ```
+
+**Note:** MCP requires explicitly saying "mcp" in the prompt. Tool routing keywords are hardcoded in the system prompt (`llm/ollama.go:BuildSystemPrompt`).
 
 ## Build and Test Commands
 
