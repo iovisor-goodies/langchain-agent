@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 )
 
 // SSHTool executes commands on remote hosts via SSH
@@ -54,26 +55,13 @@ func (s *SSHTool) Call(ctx context.Context, params map[string]any) (string, erro
 	// Parse user@host format
 	user, host := parseHost(hostParam)
 
-	// Get SSH auth methods
-	authMethods, err := getAuthMethods()
-	if err != nil {
-		return "", fmt.Errorf("failed to get auth methods: %w", err)
-	}
-
-	// SSH client config
-	config := &ssh.ClientConfig{
-		User:            user,
-		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: proper host key verification
-	}
-
 	// Add default port if not specified
 	if !strings.Contains(host, ":") {
 		host = host + ":22"
 	}
 
-	// Connect
-	client, err := ssh.Dial("tcp", host, config)
+	// Try key-based auth first, fall back to interactive password prompt
+	client, err := s.dialWithAuth(user, host)
 	if err != nil {
 		return "", fmt.Errorf("failed to connect to %s: %w", host, err)
 	}
@@ -110,6 +98,49 @@ func (s *SSHTool) Call(ctx context.Context, params map[string]any) (string, erro
 	return output, nil
 }
 
+// dialWithAuth tries key-based auth first, then falls back to interactive password prompt
+func (s *SSHTool) dialWithAuth(user, host string) (*ssh.Client, error) {
+	// Try key-based auth methods first (ssh-agent + key files)
+	keyMethods := getKeyAuthMethods()
+	if len(keyMethods) > 0 {
+		config := &ssh.ClientConfig{
+			User:            user,
+			Auth:            keyMethods,
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		}
+		client, err := ssh.Dial("tcp", host, config)
+		if err == nil {
+			return client, nil
+		}
+	}
+
+	// Key auth failed or unavailable — prompt for password
+	fmt.Printf("Password for %s@%s: ", user, strings.TrimSuffix(host, ":22"))
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println() // newline after password input
+	if err != nil {
+		return nil, fmt.Errorf("failed to read password: %w", err)
+	}
+	password := string(passwordBytes)
+
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(password),
+			ssh.KeyboardInteractive(
+				func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+					answers := make([]string, len(questions))
+					for i := range questions {
+						answers[i] = password
+					}
+					return answers, nil
+				}),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	return ssh.Dial("tcp", host, config)
+}
+
 // parseHost extracts user and host from user@host format
 func parseHost(hostStr string) (user, host string) {
 	if idx := strings.Index(hostStr, "@"); idx != -1 {
@@ -123,8 +154,8 @@ func parseHost(hostStr string) (user, host string) {
 	return currentUser, hostStr
 }
 
-// getAuthMethods returns SSH authentication methods
-func getAuthMethods() ([]ssh.AuthMethod, error) {
+// getKeyAuthMethods returns key-based SSH auth methods (ssh-agent + key files)
+func getKeyAuthMethods() []ssh.AuthMethod {
 	var methods []ssh.AuthMethod
 
 	// Try ssh-agent first
@@ -156,9 +187,5 @@ func getAuthMethods() ([]ssh.AuthMethod, error) {
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
 
-	if len(methods) == 0 {
-		return nil, fmt.Errorf("no SSH authentication methods available (tried ssh-agent and key files)")
-	}
-
-	return methods, nil
+	return methods
 }

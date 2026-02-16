@@ -56,6 +56,11 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 - `Agent.Run()` type-asserts for streaming; falls back to `Chat()` for non-streaming clients
 - Transparent to REPL — no `main.go` changes needed
 
+### 9. Slash Commands
+- `/help`, `/clear`, `/exit` as REPL commands handled in `main.go`
+- Backward compatible: bare `quit`, `exit`, `clear` still work
+- Startup banner updated to mention `/help`
+
 ## TODO
 
 - [ ] Domain knowledge improvements (command patterns)
