@@ -79,12 +79,24 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	// Agent loop
 	for i := 0; i < a.maxIter; i++ {
-		resp, err := a.client.Chat(ctx, messages)
+		var resp *llm.Response
+		var err error
+
+		if sc, ok := a.client.(llm.StreamingChatClient); ok {
+			fmt.Print("\n[Agent] ")
+			resp, err = sc.ChatStream(ctx, messages, func(chunk string) {
+				fmt.Print(chunk)
+			})
+			fmt.Println()
+		} else {
+			resp, err = a.client.Chat(ctx, messages)
+			if err == nil {
+				fmt.Printf("\n[Agent] %s\n", resp.Content)
+			}
+		}
 		if err != nil {
 			return "", fmt.Errorf("agent iteration %d: %w", i, err)
 		}
-
-		fmt.Printf("\n[Agent] %s\n", resp.Content)
 
 		// Check for tool calls
 		if len(resp.ToolCalls) > 0 {

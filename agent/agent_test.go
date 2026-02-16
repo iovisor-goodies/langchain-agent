@@ -56,6 +56,23 @@ func (m *MockTool) Call(ctx context.Context, params map[string]any) (string, err
 	return m.result, m.err
 }
 
+// MockStreamingClient wraps MockLLMClient with streaming support
+type MockStreamingClient struct {
+	MockLLMClient
+}
+
+func (m *MockStreamingClient) ChatStream(ctx context.Context, messages []llm.Message, streamFunc func(string)) (*llm.Response, error) {
+	resp, err := m.Chat(ctx, messages)
+	if err != nil {
+		return nil, err
+	}
+	// Simulate streaming: stream content if not a tool call
+	if len(resp.ToolCalls) == 0 {
+		streamFunc(resp.Content)
+	}
+	return resp, nil
+}
+
 func TestAgent_New(t *testing.T) {
 	mockClient := &MockLLMClient{}
 	mockTool := &MockTool{name: "test", description: "A test tool"}
@@ -388,6 +405,74 @@ func TestAgent_History_Accumulates(t *testing.T) {
 	// Should have: system + history(user1, assistant1) + user2
 	if len(secondCallMsgs) < 4 {
 		t.Errorf("Second call message count = %d, want at least 4", len(secondCallMsgs))
+	}
+}
+
+func TestAgent_Run_Streaming(t *testing.T) {
+	mockClient := &MockStreamingClient{
+		MockLLMClient: MockLLMClient{
+			responses: []*llm.Response{
+				{
+					Content:  "Streaming answer about containers.",
+					IsFinish: true,
+				},
+			},
+		},
+	}
+
+	agent, _ := New(Config{Client: mockClient})
+
+	result, err := agent.Run(context.Background(), "What is a container?")
+
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result != "Streaming answer about containers." {
+		t.Errorf("Run() = %q, want %q", result, "Streaming answer about containers.")
+	}
+	if mockClient.callCount != 1 {
+		t.Errorf("LLM call count = %d, want 1", mockClient.callCount)
+	}
+}
+
+func TestAgent_Run_StreamingToolCall(t *testing.T) {
+	mockClient := &MockStreamingClient{
+		MockLLMClient: MockLLMClient{
+			responses: []*llm.Response{
+				{
+					Content: `{"name": "test", "parameters": {"input": "hello"}}`,
+					ToolCalls: []llm.ToolCallParse{
+						{Name: "test", Params: map[string]any{"input": "hello"}},
+					},
+				},
+				{
+					Content:  "The tool returned: world",
+					IsFinish: true,
+				},
+			},
+		},
+	}
+
+	mockTool := &MockTool{
+		name:   "test",
+		result: "world",
+	}
+
+	agent, _ := New(Config{
+		Client: mockClient,
+		Tools:  []tools.Tool{mockTool},
+	})
+
+	result, err := agent.Run(context.Background(), "Say hello")
+
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !strings.Contains(result, "world") {
+		t.Errorf("Run() = %q, want to contain 'world'", result)
+	}
+	if mockTool.callCount != 1 {
+		t.Errorf("Tool call count = %d, want 1", mockTool.callCount)
 	}
 }
 

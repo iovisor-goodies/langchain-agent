@@ -19,7 +19,7 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 - ✅ Wiki RAG tool (Confluence HTML export with diagram support)
 
 **TODO:**
-- [ ] Streaming output
+- ✅ Streaming output
 - [ ] Domain knowledge improvements (command patterns)
 - [ ] Event-driven automation
 

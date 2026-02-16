@@ -21,8 +21,15 @@ type Client struct {
 	model string
 }
 
-// Ensure Client implements ChatClient
+// StreamingChatClient extends ChatClient with streaming support
+type StreamingChatClient interface {
+	ChatClient
+	ChatStream(ctx context.Context, messages []Message, streamFunc func(chunk string)) (*Response, error)
+}
+
+// Ensure Client implements both interfaces
 var _ ChatClient = (*Client)(nil)
+var _ StreamingChatClient = (*Client)(nil)
 
 // Message represents a chat message
 type Message struct {
@@ -78,6 +85,67 @@ func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error
 
 	// Call the LLM
 	resp, err := c.llm.GenerateContent(ctx, llmMessages)
+	if err != nil {
+		return nil, fmt.Errorf("llm generate failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("no response from llm")
+	}
+
+	content := resp.Choices[0].Content
+	return c.parseResponse(content), nil
+}
+
+// ChatStream sends messages to the LLM and streams text responses in real-time.
+// Tool call responses (starting with '{') are buffered silently.
+func (c *Client) ChatStream(ctx context.Context, messages []Message, streamFunc func(chunk string)) (*Response, error) {
+	// Convert to langchaingo message format
+	var llmMessages []llms.MessageContent
+	for _, msg := range messages {
+		var role llms.ChatMessageType
+		switch msg.Role {
+		case "system":
+			role = llms.ChatMessageTypeSystem
+		case "user":
+			role = llms.ChatMessageTypeHuman
+		case "assistant":
+			role = llms.ChatMessageTypeAI
+		case "tool":
+			role = llms.ChatMessageTypeHuman
+		default:
+			role = llms.ChatMessageTypeHuman
+		}
+		llmMessages = append(llmMessages, llms.MessageContent{
+			Role:  role,
+			Parts: []llms.ContentPart{llms.TextContent{Text: msg.Content}},
+		})
+	}
+
+	var buf strings.Builder
+	streaming := false
+	jsonMode := false
+
+	resp, err := c.llm.GenerateContent(ctx, llmMessages,
+		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+			buf.Write(chunk)
+
+			if !streaming && !jsonMode {
+				trimmed := strings.TrimSpace(buf.String())
+				if len(trimmed) > 0 {
+					if trimmed[0] == '{' {
+						jsonMode = true
+					} else {
+						streaming = true
+						streamFunc(buf.String())
+					}
+				}
+			} else if streaming {
+				streamFunc(string(chunk))
+			}
+
+			return nil
+		}))
 	if err != nil {
 		return nil, fmt.Errorf("llm generate failed: %w", err)
 	}
