@@ -19,6 +19,7 @@ func main() {
 	wikiPath := flag.String("wiki", "", "Path to Confluence HTML export to index and enable wiki tool")
 	qdrantURL := flag.String("qdrant", "http://localhost:6333", "Qdrant server URL")
 	indexOnly := flag.Bool("index-only", false, "Only index the wiki, then exit")
+	mcpCmd := flag.String("mcp", "", "MCP server command (e.g., 'mcp-filesystem-server /tmp')")
 	flag.Parse()
 
 	fmt.Printf("LangChain Agent (model: %s)\n", *model)
@@ -26,8 +27,25 @@ func main() {
 	// Initialize tools
 	toolList := []tools.Tool{
 		&tools.SSHTool{},
-		&tools.MCPTool{},
 		&tools.ShellTool{},
+	}
+
+	// MCP tool (only when --mcp is provided)
+	if *mcpCmd != "" {
+		parts := strings.Fields(*mcpCmd)
+		if len(parts) == 0 {
+			fmt.Fprintf(os.Stderr, "Invalid --mcp command\n")
+			os.Exit(1)
+		}
+		ctx := context.Background()
+		mcpTool, err := tools.NewMCPTool(ctx, parts[0], parts[1:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to connect to MCP server: %v\n", err)
+			os.Exit(1)
+		}
+		defer mcpTool.Close()
+		toolList = append(toolList, mcpTool)
+		fmt.Printf("MCP server connected (%d tools discovered)\n", mcpTool.ToolCount())
 	}
 
 	// Handle wiki indexing and tool setup

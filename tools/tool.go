@@ -16,6 +16,11 @@ type ToolCall struct {
 	Params map[string]any `json:"parameters"`
 }
 
+// Closeable is implemented by tools that hold resources needing cleanup
+type Closeable interface {
+	Close() error
+}
+
 // ToolResult holds the result of a tool execution
 type ToolResult struct {
 	Tool   string

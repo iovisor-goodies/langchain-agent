@@ -2,205 +2,191 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// MCPTool is a stub for MCP server interactions
-// TODO: Implement real MCP client protocol
-type MCPTool struct{}
+// MCPClient interface for testability
+type MCPClient interface {
+	ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+	CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	Close() error
+}
+
+// MCPTool wraps an MCP server's tools as a single agent tool
+type MCPTool struct {
+	client    MCPClient
+	serverCmd string
+	tools     []mcp.Tool
+	toolMap   map[string]mcp.Tool
+}
+
+// Ensure MCPTool implements Closeable
+var _ Closeable = (*MCPTool)(nil)
+
+// NewMCPTool creates a new MCPTool by connecting to an MCP server via stdio
+func NewMCPTool(ctx context.Context, command string, args []string) (*MCPTool, error) {
+	c, err := client.NewStdioMCPClient(command, nil, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start MCP server: %w", err)
+	}
+
+	initReq := mcp.InitializeRequest{}
+	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initReq.Params.ClientInfo = mcp.Implementation{
+		Name:    "langchain-agent",
+		Version: "1.0.0",
+	}
+
+	_, err = c.Initialize(ctx, initReq)
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("MCP initialize failed: %w", err)
+	}
+
+	listResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("MCP list tools failed: %w", err)
+	}
+
+	toolMap := make(map[string]mcp.Tool, len(listResult.Tools))
+	for _, t := range listResult.Tools {
+		toolMap[t.Name] = t
+	}
+
+	return &MCPTool{
+		client:    c,
+		serverCmd: command,
+		tools:     listResult.Tools,
+		toolMap:   toolMap,
+	}, nil
+}
+
+// newMCPToolFromClient creates an MCPTool from a pre-configured client (for testing)
+func newMCPToolFromClient(c MCPClient, tools []mcp.Tool) *MCPTool {
+	toolMap := make(map[string]mcp.Tool, len(tools))
+	for _, t := range tools {
+		toolMap[t.Name] = t
+	}
+	return &MCPTool{
+		client:  c,
+		tools:   tools,
+		toolMap: toolMap,
+	}
+}
 
 func (m *MCPTool) Name() string {
 	return "mcp"
 }
 
 func (m *MCPTool) Description() string {
-	return "Query an MCP server for Kubernetes/OpenShift operations. Actions: get_pods, describe_pod, get_logs, get_events, get_deployments"
+	if len(m.tools) == 0 {
+		return "MCP server tool (no tools discovered)"
+	}
+	var names []string
+	for _, t := range m.tools {
+		names = append(names, t.Name)
+	}
+	return fmt.Sprintf("MCP server tool. Available tools: %s", strings.Join(names, ", "))
 }
 
 func (m *MCPTool) Parameters() map[string]any {
+	// Build enum list with descriptions for tool_name
+	var enumValues []string
+	var enumDescs []string
+	for _, t := range m.tools {
+		enumValues = append(enumValues, t.Name)
+		desc := t.Description
+		if desc == "" {
+			desc = t.Name
+		}
+		enumDescs = append(enumDescs, fmt.Sprintf("%s: %s", t.Name, desc))
+	}
+
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"server": map[string]any{
+			"tool_name": map[string]any{
 				"type":        "string",
-				"description": "MCP server hostname (e.g., test.my.domain)",
+				"description": "MCP tool to call. Available: " + strings.Join(enumDescs, "; "),
+				"enum":        enumValues,
 			},
-			"action": map[string]any{
-				"type":        "string",
-				"description": "Action to perform: get_pods, describe_pod, get_logs, get_events, get_deployments",
-			},
-			"namespace": map[string]any{
-				"type":        "string",
-				"description": "Kubernetes namespace (optional, defaults to 'default')",
-			},
-			"resource": map[string]any{
-				"type":        "string",
-				"description": "Resource name (e.g., pod name) for describe/logs actions",
+			"arguments": map[string]any{
+				"type":        "object",
+				"description": "Arguments to pass to the MCP tool",
 			},
 		},
-		"required": []string{"server", "action"},
+		"required": []string{"tool_name"},
 	}
 }
 
 func (m *MCPTool) Call(ctx context.Context, params map[string]any) (string, error) {
-	server, _ := params["server"].(string)
-	action, _ := params["action"].(string)
-	namespace, _ := params["namespace"].(string)
-	resource, _ := params["resource"].(string)
-
-	if server == "" {
-		return "", fmt.Errorf("server parameter required")
-	}
-	if action == "" {
-		return "", fmt.Errorf("action parameter required")
-	}
-	if namespace == "" {
-		namespace = "default"
+	toolName, _ := params["tool_name"].(string)
+	if toolName == "" {
+		return "", fmt.Errorf("tool_name parameter required")
 	}
 
-	// STUB: Return mock data for testing
-	// TODO: Implement real MCP client protocol
-	return m.mockResponse(server, action, namespace, resource)
+	if _, ok := m.toolMap[toolName]; !ok {
+		var available []string
+		for _, t := range m.tools {
+			available = append(available, t.Name)
+		}
+		return "", fmt.Errorf("unknown MCP tool %q, available: %s", toolName, strings.Join(available, ", "))
+	}
+
+	// Extract arguments
+	var arguments map[string]any
+	if args, ok := params["arguments"]; ok {
+		if argMap, ok := args.(map[string]any); ok {
+			arguments = argMap
+		}
+	}
+
+	req := mcp.CallToolRequest{}
+	req.Params.Name = toolName
+	req.Params.Arguments = arguments
+
+	result, err := m.client.CallTool(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("MCP call %q failed: %w", toolName, err)
+	}
+
+	// Extract text content from result
+	var parts []string
+	for _, content := range result.Content {
+		switch c := content.(type) {
+		case mcp.TextContent:
+			parts = append(parts, c.Text)
+		case *mcp.TextContent:
+			parts = append(parts, c.Text)
+		}
+	}
+
+	output := strings.Join(parts, "\n")
+
+	if result.IsError {
+		return "", fmt.Errorf("MCP tool %q error: %s", toolName, output)
+	}
+
+	if output == "" {
+		return "(no output)", nil
+	}
+
+	return output, nil
 }
 
-func (m *MCPTool) mockResponse(server, action, namespace, resource string) (string, error) {
-	switch action {
-	case "get_pods":
-		return m.mockGetPods(namespace)
-	case "describe_pod":
-		return m.mockDescribePod(namespace, resource)
-	case "get_logs":
-		return m.mockGetLogs(namespace, resource)
-	case "get_events":
-		return m.mockGetEvents(namespace)
-	case "get_deployments":
-		return m.mockGetDeployments(namespace)
-	default:
-		return "", fmt.Errorf("unknown action: %s", action)
+func (m *MCPTool) Close() error {
+	if m.client != nil {
+		return m.client.Close()
 	}
+	return nil
 }
 
-func (m *MCPTool) mockGetPods(namespace string) (string, error) {
-	pods := []map[string]any{
-		{
-			"name":    "api-server-7d8f9b6c5-xk2mn",
-			"status":  "Running",
-			"ready":   "1/1",
-			"restarts": 0,
-			"age":     "2d",
-		},
-		{
-			"name":    "worker-5c4d3b2a1-pq9rs",
-			"status":  "CrashLoopBackOff",
-			"ready":   "0/1",
-			"restarts": 15,
-			"age":     "1d",
-		},
-		{
-			"name":    "database-6e5f4d3c2-lm8no",
-			"status":  "Running",
-			"ready":   "1/1",
-			"restarts": 0,
-			"age":     "5d",
-		},
-	}
-	result, _ := json.MarshalIndent(map[string]any{
-		"namespace": namespace,
-		"pods":      pods,
-	}, "", "  ")
-	return string(result), nil
-}
-
-func (m *MCPTool) mockDescribePod(namespace, podName string) (string, error) {
-	if podName == "" {
-		return "", fmt.Errorf("resource (pod name) required for describe_pod")
-	}
-	desc := map[string]any{
-		"name":      podName,
-		"namespace": namespace,
-		"status": map[string]any{
-			"phase":   "CrashLoopBackOff",
-			"reason":  "Error",
-			"message": "Back-off 5m0s restarting failed container",
-		},
-		"containers": []map[string]any{
-			{
-				"name":         "main",
-				"image":        "myapp:latest",
-				"state":        "Waiting",
-				"reason":       "CrashLoopBackOff",
-				"restartCount": 15,
-				"lastState": map[string]any{
-					"exitCode": 1,
-					"reason":   "Error",
-				},
-			},
-		},
-		"events": []map[string]any{
-			{"type": "Warning", "reason": "BackOff", "message": "Back-off restarting failed container"},
-			{"type": "Warning", "reason": "Failed", "message": "Error: container exited with code 1"},
-		},
-	}
-	result, _ := json.MarshalIndent(desc, "", "  ")
-	return string(result), nil
-}
-
-func (m *MCPTool) mockGetLogs(namespace, podName string) (string, error) {
-	if podName == "" {
-		return "", fmt.Errorf("resource (pod name) required for get_logs")
-	}
-	return `2024-01-15T10:23:45Z [ERROR] Failed to connect to database: connection refused
-2024-01-15T10:23:45Z [ERROR] Retrying in 5 seconds...
-2024-01-15T10:23:50Z [ERROR] Failed to connect to database: connection refused
-2024-01-15T10:23:50Z [FATAL] Max retries exceeded, exiting
-`, nil
-}
-
-func (m *MCPTool) mockGetEvents(namespace string) (string, error) {
-	events := []map[string]any{
-		{
-			"type":    "Warning",
-			"reason":  "BackOff",
-			"object":  "pod/worker-5c4d3b2a1-pq9rs",
-			"message": "Back-off restarting failed container",
-			"age":     "5m",
-		},
-		{
-			"type":    "Normal",
-			"reason":  "Pulled",
-			"object":  "pod/api-server-7d8f9b6c5-xk2mn",
-			"message": "Successfully pulled image",
-			"age":     "2d",
-		},
-	}
-	result, _ := json.MarshalIndent(map[string]any{
-		"namespace": namespace,
-		"events":    events,
-	}, "", "  ")
-	return string(result), nil
-}
-
-func (m *MCPTool) mockGetDeployments(namespace string) (string, error) {
-	deployments := []map[string]any{
-		{
-			"name":      "api-server",
-			"ready":     "1/1",
-			"upToDate":  1,
-			"available": 1,
-			"age":       "10d",
-		},
-		{
-			"name":      "worker",
-			"ready":     "0/1",
-			"upToDate":  1,
-			"available": 0,
-			"age":       "10d",
-		},
-	}
-	result, _ := json.MarshalIndent(map[string]any{
-		"namespace":   namespace,
-		"deployments": deployments,
-	}, "", "  ")
-	return string(result), nil
+// ToolCount returns the number of discovered MCP tools
+func (m *MCPTool) ToolCount() int {
+	return len(m.tools)
 }
