@@ -15,6 +15,9 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 ### 2. SSH Tool
 - Remote command execution via `golang.org/x/crypto/ssh`
 - Host/command parameters parsed from LLM tool calls
+- Auth chain: ssh-agent → key files (~/.ssh/id_{rsa,ed25519,ecdsa}) → interactive password prompt
+- Password fallback uses `golang.org/x/term` for hidden terminal input
+- Supports both `ssh.Password` and `ssh.KeyboardInteractive` methods
 
 ### 3. Shell Tool
 - Local command execution
