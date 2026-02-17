@@ -12,7 +12,7 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 - ✅ Agent loop with tool dispatch
 - ✅ SSH tool (remote command execution, ssh-agent + interactive password fallback)
 - ✅ Shell tool (local command execution)
-- ✅ MCP tool (real client via mark3labs/mcp-go, stdio transport)
+- ✅ MCP tool (multiple servers, stdio/SSE/HTTP transport, via mark3labs/mcp-go)
 - ✅ Conversation history/memory
 - ✅ Tool selection rules in prompt
 - ✅ Honest error reporting (no hallucination on failures)
@@ -38,7 +38,7 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 "is Go faster than Python?"                       # → direct answer (no tool)
 ```
 
-**Note:** MCP requires explicitly saying "mcp" in the prompt. Tool routing keywords are hardcoded in the system prompt (`llm/ollama.go:BuildSystemPrompt`).
+**Note:** MCP requires explicitly saying "mcp" in the prompt. Tool routing keywords are hardcoded in the system prompt (`llm/ollama.go:BuildSystemPrompt`). The MCP routing line is dynamically generated based on registered MCP tool names (`llm/ollama.go:mcpRoutingLine`).
 
 ## Build and Test Commands
 
@@ -48,7 +48,11 @@ go build -o langchain-agent .
 ./langchain-agent -model llama3.2    # Use smaller/faster model (less reliable)
 ./langchain-agent --wiki ~/wiki/     # Enable wiki RAG (requires Qdrant)
 ./langchain-agent --wiki ~/wiki/ --index-only  # Index only, then exit
-./langchain-agent --mcp "mcp-filesystem-server /tmp"  # Enable MCP tool
+./langchain-agent --mcp "mcp-filesystem-server /tmp"      # Single MCP server (stdio)
+./langchain-agent --mcp "fs:mcp-filesystem-server /tmp"   # Labeled MCP server → tool "mcp_fs"
+./langchain-agent --mcp "mcp-filesystem-server /tmp" --mcp "http://localhost:8080"  # Multiple servers
+./langchain-agent --mcp "http://localhost:8080/sse"        # SSE transport (URL ending in /sse)
+./langchain-agent --mcp "http://localhost:8080"            # Streamable HTTP transport
 
 go test ./...                        # Run all tests
 go test -v ./agent/...               # Agent loop tests (with mock LLM)
@@ -91,6 +95,11 @@ langchain-agent/
 - Clear error messages distinguish "no output" from "command failed"
 - `llm.ChatClient` interface allows mocking in tests
 - SSH auth: tries ssh-agent → key files → interactive password prompt (like `ssh` itself)
+- MCP: repeatable `--mcp` flag supports multiple servers with label syntax and auto-naming:
+  - `label:command args` → tool name `mcp_<label>` (stdio transport)
+  - `http://...` → Streamable HTTP transport; `http://.../sse` → SSE transport
+  - No label: first server = `mcp`, subsequent = `mcp2`, `mcp3`, etc.
+  - System prompt MCP routing line is dynamically built from registered tool names
 
 ## Research Findings
 
@@ -103,7 +112,7 @@ LangChainGo doesn't have first-class Ollama native tool calling in agent framewo
 
 - `github.com/tmc/langchaingo/llms/ollama` - Ollama LLM integration
 - `github.com/tmc/langchaingo/embeddings` - Text embeddings
-- `github.com/mark3labs/mcp-go` - MCP client (stdio transport)
+- `github.com/mark3labs/mcp-go` - MCP client (stdio, SSE, Streamable HTTP transport)
 - `golang.org/x/crypto/ssh` - SSH client
 - `golang.org/x/term` - Terminal password input (hidden)
 - `golang.org/x/net/html` - HTML parsing for Confluence export
