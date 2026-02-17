@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Network Architecture</title>
+</head>
+<body>
+<h1>Network Architecture Overview</h1>
+
+<h2>Network Topology</h2>
+<p>Our infrastructure uses a hub-and-spoke network topology with three availability zones in us-east-1. The hub VPC (10.0.0.0/16) hosts shared services including the Kubernetes control plane, monitoring stack, and CI/CD runners. Spoke VPCs connect via VPC peering for low-latency east-west traffic.</p>
+
+<img src="images/diagram.png" alt="Network topology diagram showing hub-and-spoke VPC architecture" />
+
+<h2>Subnet Layout</h2>
+<ul>
+<li>Public subnets (10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24): Load balancers and NAT gateways only</li>
+<li>Private subnets (10.0.10.0/24, 10.0.20.0/24, 10.0.30.0/24): Application workloads and Kubernetes nodes</li>
+<li>Database subnets (10.0.100.0/24, 10.0.200.0/24): RDS instances and ElastiCache, no internet access</li>
+</ul>
+
+<h2>Firewall Rules</h2>
+<p>Security groups follow a least-privilege model. Each service has a dedicated security group that only allows traffic from known sources. Default deny is enforced at the VPC level using Network ACLs.</p>
+
+<h3>Ingress Rules</h3>
+<ul>
+<li>Port 443 (HTTPS): Allowed from CloudFront edge locations only via prefix list</li>
+<li>Port 80 (HTTP): Redirected to HTTPS at the ALB level, not allowed directly</li>
+<li>Port 6443 (K8s API): Allowed from VPN CIDR (172.16.0.0/12) and CI/CD runner subnet only</li>
+<li>Port 22 (SSH): Allowed from bastion host security group only, not open to internet</li>
+</ul>
+
+<h3>Egress Rules</h3>
+<ul>
+<li>Port 443 (HTTPS): Allowed to 0.0.0.0/0 via NAT gateway for pulling images and updates</li>
+<li>Port 5432 (PostgreSQL): Allowed to database subnet security group only</li>
+<li>Port 6379 (Redis): Allowed to ElastiCache security group only</li>
+</ul>
+
+<h2>DNS Configuration</h2>
+<p>Internal DNS uses Route53 private hosted zones. Each service registers via external-dns controller running in the cluster. The naming convention is service-name.namespace.internal.example.com. External DNS points to CloudFront distributions with origin failover configured.</p>
+
+<h2>Load Balancing</h2>
+<p>We use AWS Application Load Balancers (ALB) managed by the AWS Load Balancer Controller in Kubernetes. Each ingress resource creates a target group with health checks on the /health endpoint. Cross-zone load balancing is enabled for even distribution across availability zones.</p>
+
+<h2>VPN Access</h2>
+<p>Engineers connect via WireGuard VPN to access internal services. The VPN server runs on a dedicated EC2 instance in each availability zone. Split tunneling is configured so only traffic to internal CIDRs routes through the VPN. MFA is required for VPN authentication via Okta integration.</p>
+
+</body>
+</html>

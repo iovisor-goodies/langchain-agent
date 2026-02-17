@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Troubleshooting Guide</title>
+</head>
+<body>
+<h1>Troubleshooting Guide</h1>
+
+<h2>Pod Issues</h2>
+
+<h3>Pods Stuck in Pending State</h3>
+<p>When pods remain in Pending state, it usually indicates resource constraints or scheduling issues. Check node capacity and resource requests first.</p>
+<pre>
+kubectl describe pod &lt;pod-name&gt; -n &lt;namespace&gt;
+kubectl get nodes -o wide
+kubectl top nodes
+</pre>
+<p>Common causes include insufficient CPU or memory on nodes, node taints preventing scheduling, and PersistentVolumeClaim not bound. If nodes are at capacity, consider scaling the node group or reducing resource requests.</p>
+
+<h3>CrashLoopBackOff</h3>
+<p>CrashLoopBackOff means the container starts but exits with an error. The most common causes are missing environment variables, failed database connections, and configuration file errors.</p>
+<pre>
+kubectl logs &lt;pod-name&gt; -n &lt;namespace&gt; --previous
+kubectl describe pod &lt;pod-name&gt; -n &lt;namespace&gt;
+</pre>
+<p>Check the exit code in the pod description. Exit code 1 usually means application error, exit code 137 means OOMKilled (increase memory limit), and exit code 143 means the container received SIGTERM.</p>
+
+<h3>OOMKilled Pods</h3>
+<p>If pods are killed with OOMKilled status, the container exceeded its memory limit. Check the current memory usage pattern and increase the limit in the Helm values file.</p>
+<pre>
+kubectl top pod &lt;pod-name&gt; -n &lt;namespace&gt;
+kubectl describe pod &lt;pod-name&gt; -n &lt;namespace&gt; | grep -A5 "Last State"
+</pre>
+
+<h2>Network Issues</h2>
+
+<h3>Service Not Reachable</h3>
+<p>If a service is not reachable from other pods, verify the service selector matches the pod labels. Use kubectl get endpoints to check if the service has active endpoints. If endpoints are empty, the selector is wrong or no matching pods are running.</p>
+<pre>
+kubectl get svc &lt;service-name&gt; -n &lt;namespace&gt;
+kubectl get endpoints &lt;service-name&gt; -n &lt;namespace&gt;
+kubectl run debug --rm -it --image=busybox -- nslookup &lt;service-name&gt;.&lt;namespace&gt;.svc.cluster.local
+</pre>
+
+<h3>Ingress Not Working</h3>
+<p>For ingress issues, check the ALB target group health in AWS console and verify the ingress annotations are correct. Common mistakes include wrong backend service port, missing TLS certificate ARN, and incorrect path patterns.</p>
+
+<h2>Database Issues</h2>
+
+<h3>Connection Timeouts to RDS</h3>
+<p>Database connection timeouts are usually caused by security group misconfiguration or exhausted connection pool. Verify the application security group has egress to port 5432 on the database security group. Check active connections against the max_connections parameter.</p>
+<pre>
+# Check connections from bastion
+psql -h mydb.cluster-abc123.us-east-1.rds.amazonaws.com -U admin -c "SELECT count(*) FROM pg_stat_activity;"
+</pre>
+
+<h3>Slow Queries</h3>
+<p>Enable Performance Insights in RDS to identify slow queries. Check for missing indexes, table bloat, and long-running transactions. The pg_stat_statements extension provides query-level statistics.</p>
+
+<h2>Monitoring and Alerts</h2>
+
+<h3>Alert Fatigue</h3>
+<p>If you receive too many non-actionable alerts, review the alert thresholds in the Prometheus alerting rules. Focus on symptoms (user-facing errors, latency) rather than causes (CPU usage, memory). Use inhibition rules to suppress dependent alerts when a parent alert fires.</p>
+
+<h3>Missing Metrics</h3>
+<p>If metrics are missing in Grafana, check that the ServiceMonitor CRD exists and has the correct selector labels. Verify Prometheus is scraping the target by checking the Prometheus targets page at prometheus.internal.example.com/targets.</p>
+
+</body>
+</html>

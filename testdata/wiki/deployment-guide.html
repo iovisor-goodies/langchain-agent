@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Kubernetes Deployment Guide</title>
+</head>
+<body>
+<h1>Kubernetes Deployment Guide</h1>
+
+<h2>Overview</h2>
+<p>This guide covers the standard deployment procedures for our microservices platform running on Kubernetes 1.28. All production deployments follow a blue-green strategy with automated rollback on health check failure.</p>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>kubectl configured with production cluster credentials</li>
+<li>Docker images pushed to our private registry at registry.internal.example.com</li>
+<li>Helm 3.12+ installed locally</li>
+<li>Access to the deployment namespace (requires RBAC role "deployer")</li>
+</ul>
+
+<h2>Deployment Steps</h2>
+
+<h3>Step 1: Build and Push Image</h3>
+<p>Build the Docker image using the CI pipeline or manually with the following commands. Always tag with both the git SHA and the semantic version.</p>
+<pre>
+docker build -t registry.internal.example.com/myapp:v2.1.0 .
+docker push registry.internal.example.com/myapp:v2.1.0
+</pre>
+
+<h3>Step 2: Update Helm Values</h3>
+<p>Modify the values file for the target environment. The image tag and replica count are the most commonly changed values.</p>
+<pre>
+# values-production.yaml
+image:
+  repository: registry.internal.example.com/myapp
+  tag: v2.1.0
+replicaCount: 3
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+</pre>
+
+<h3>Step 3: Deploy with Helm</h3>
+<p>Run the Helm upgrade command. The --wait flag ensures the deployment is healthy before the command returns. The --timeout flag prevents hanging on a failed rollout.</p>
+<pre>
+helm upgrade --install myapp ./charts/myapp \
+  -f values-production.yaml \
+  --namespace production \
+  --wait --timeout 5m
+</pre>
+
+<h3>Step 4: Verify Deployment</h3>
+<p>After deployment, verify that all pods are running and the service is responding correctly. Check the rollout status and run smoke tests against the service endpoint.</p>
+<pre>
+kubectl rollout status deployment/myapp -n production
+kubectl get pods -n production -l app=myapp
+curl -s https://myapp.internal.example.com/health | jq .
+</pre>
+
+<h2>Rollback Procedure</h2>
+<p>If a deployment fails health checks or introduces regressions, rollback immediately using Helm. Do not attempt to fix forward in production unless the fix is trivial and well-tested.</p>
+<pre>
+helm rollback myapp 0 --namespace production
+</pre>
+
+<h2>Common Issues</h2>
+<ul>
+<li>ImagePullBackOff: Check registry credentials and image tag spelling</li>
+<li>CrashLoopBackOff: Check application logs with kubectl logs -f</li>
+<li>Pending pods: Check node resources with kubectl describe node</li>
+<li>Service unavailable: Check ingress configuration and TLS certificates</li>
+</ul>
+
+</body>
+</html>
