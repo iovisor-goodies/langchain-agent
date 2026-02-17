@@ -250,6 +250,24 @@ func findMatchingBrace(s string) int {
 	return -1
 }
 
+// mcpRoutingLine builds the MCP routing line for the system prompt.
+// Returns empty string if no MCP tools are present.
+func mcpRoutingLine(tools []ToolDef) string {
+	var mcpNames []string
+	for _, t := range tools {
+		if strings.HasPrefix(t.Name, "mcp") {
+			mcpNames = append(mcpNames, fmt.Sprintf("%q", t.Name))
+		}
+	}
+	if len(mcpNames) == 0 {
+		return ""
+	}
+	if len(mcpNames) == 1 {
+		return fmt.Sprintf("- \"mcp\", MCP tool calls → use %s tool (check description for available tools)\n", mcpNames[0])
+	}
+	return fmt.Sprintf("- \"mcp\", MCP tool calls → use %s tool (check descriptions for available tools)\n", strings.Join(mcpNames, " or "))
+}
+
 // BuildSystemPrompt creates the system prompt with tool definitions
 func BuildSystemPrompt(tools []ToolDef) string {
 	var sb strings.Builder
@@ -262,8 +280,9 @@ RESPONSE FORMAT:
 WHEN TO USE TOOLS:
 - "ssh to", "connect to", user@host, remote server, IP address → use "ssh" tool
 - Local machine operations, run commands, check files → use "shell" tool
-- "mcp", file operations on MCP server, MCP tool calls → use "mcp" tool
-- "wiki", "confluence", "documentation", "diagram", "architecture" → use "wiki" tool
+`)
+	sb.WriteString(mcpRoutingLine(tools))
+	sb.WriteString(`- "wiki", "confluence", "documentation", "diagram", "architecture" → use "wiki" tool
 
 WHEN NOT TO USE TOOLS (answer directly from your knowledge):
 - General knowledge questions (math, science, history, concepts)

@@ -39,14 +39,14 @@ func testTools() []mcp.Tool {
 }
 
 func TestMCPTool_Name(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, testTools())
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", testTools())
 	if got := tool.Name(); got != "mcp" {
 		t.Errorf("Name() = %q, want %q", got, "mcp")
 	}
 }
 
 func TestMCPTool_Description(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, testTools())
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", testTools())
 	desc := tool.Description()
 	for _, name := range []string{"read_file", "list_directory"} {
 		if !strings.Contains(desc, name) {
@@ -56,7 +56,7 @@ func TestMCPTool_Description(t *testing.T) {
 }
 
 func TestMCPTool_Description_NoTools(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, nil)
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", nil)
 	desc := tool.Description()
 	if !strings.Contains(desc, "no tools") {
 		t.Errorf("Description() should indicate no tools, got %q", desc)
@@ -64,7 +64,7 @@ func TestMCPTool_Description_NoTools(t *testing.T) {
 }
 
 func TestMCPTool_Parameters(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, testTools())
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", testTools())
 	params := tool.Parameters()
 
 	if params["type"] != "object" {
@@ -102,7 +102,7 @@ func TestMCPTool_Call_Success(t *testing.T) {
 		},
 	}
 
-	tool := newMCPToolFromClient(mock, testTools())
+	tool := newMCPToolFromClient(mock, "", testTools())
 	result, err := tool.Call(context.Background(), map[string]any{
 		"tool_name": "read_file",
 		"arguments": map[string]any{"path": "/tmp/test.txt"},
@@ -117,7 +117,7 @@ func TestMCPTool_Call_Success(t *testing.T) {
 }
 
 func TestMCPTool_Call_MissingToolName(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, testTools())
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", testTools())
 	_, err := tool.Call(context.Background(), map[string]any{})
 
 	if err == nil {
@@ -129,7 +129,7 @@ func TestMCPTool_Call_MissingToolName(t *testing.T) {
 }
 
 func TestMCPTool_Call_UnknownTool(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, testTools())
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", testTools())
 	_, err := tool.Call(context.Background(), map[string]any{
 		"tool_name": "nonexistent",
 	})
@@ -154,7 +154,7 @@ func TestMCPTool_Call_IsError(t *testing.T) {
 		},
 	}
 
-	tool := newMCPToolFromClient(mock, testTools())
+	tool := newMCPToolFromClient(mock, "", testTools())
 	_, err := tool.Call(context.Background(), map[string]any{
 		"tool_name": "read_file",
 	})
@@ -174,7 +174,7 @@ func TestMCPTool_Call_ClientError(t *testing.T) {
 		},
 	}
 
-	tool := newMCPToolFromClient(mock, testTools())
+	tool := newMCPToolFromClient(mock, "", testTools())
 	_, err := tool.Call(context.Background(), map[string]any{
 		"tool_name": "read_file",
 	})
@@ -194,7 +194,7 @@ func TestMCPTool_Call_NoOutput(t *testing.T) {
 		},
 	}
 
-	tool := newMCPToolFromClient(mock, testTools())
+	tool := newMCPToolFromClient(mock, "", testTools())
 	result, err := tool.Call(context.Background(), map[string]any{
 		"tool_name": "read_file",
 	})
@@ -209,7 +209,7 @@ func TestMCPTool_Call_NoOutput(t *testing.T) {
 
 func TestMCPTool_Close(t *testing.T) {
 	mock := &mockMCPClient{}
-	tool := newMCPToolFromClient(mock, testTools())
+	tool := newMCPToolFromClient(mock, "", testTools())
 
 	if err := tool.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -220,7 +220,7 @@ func TestMCPTool_Close(t *testing.T) {
 }
 
 func TestMCPTool_ToolCount(t *testing.T) {
-	tool := newMCPToolFromClient(&mockMCPClient{}, testTools())
+	tool := newMCPToolFromClient(&mockMCPClient{}, "", testTools())
 	if got := tool.ToolCount(); got != 2 {
 		t.Errorf("ToolCount() = %d, want 2", got)
 	}

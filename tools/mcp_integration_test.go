@@ -30,7 +30,7 @@ func TestMCPTool_Integration_FilesystemServer(t *testing.T) {
 	defer cancel()
 
 	// Connect to MCP filesystem server
-	tool, err := NewMCPTool(ctx, serverPath, []string{tmpDir})
+	tool, err := NewMCPTool(ctx, "mcp", serverPath, []string{tmpDir})
 	if err != nil {
 		t.Fatalf("NewMCPTool() error = %v", err)
 	}

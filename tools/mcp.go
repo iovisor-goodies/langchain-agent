@@ -19,6 +19,7 @@ type MCPClient interface {
 // MCPTool wraps an MCP server's tools as a single agent tool
 type MCPTool struct {
 	client    MCPClient
+	name      string
 	serverCmd string
 	tools     []mcp.Tool
 	toolMap   map[string]mcp.Tool
@@ -28,12 +29,33 @@ type MCPTool struct {
 var _ Closeable = (*MCPTool)(nil)
 
 // NewMCPTool creates a new MCPTool by connecting to an MCP server via stdio
-func NewMCPTool(ctx context.Context, command string, args []string) (*MCPTool, error) {
+func NewMCPTool(ctx context.Context, name, command string, args []string) (*MCPTool, error) {
 	c, err := client.NewStdioMCPClient(command, nil, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start MCP server: %w", err)
 	}
+	return initMCPTool(ctx, c, name, command)
+}
 
+// NewMCPToolFromURL creates a new MCPTool by connecting to a remote MCP server.
+// URLs ending in /sse use SSE transport; all other URLs use Streamable HTTP.
+func NewMCPToolFromURL(ctx context.Context, name, serverURL string) (*MCPTool, error) {
+	var c *client.Client
+	var err error
+
+	if strings.HasSuffix(serverURL, "/sse") {
+		c, err = client.NewSSEMCPClient(serverURL)
+	} else {
+		c, err = client.NewStreamableHttpClient(serverURL)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to MCP server at %s: %w", serverURL, err)
+	}
+	return initMCPTool(ctx, c, name, serverURL)
+}
+
+// initMCPTool initializes an MCP client, lists available tools, and returns an MCPTool.
+func initMCPTool(ctx context.Context, c *client.Client, name, label string) (*MCPTool, error) {
 	initReq := mcp.InitializeRequest{}
 	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initReq.Params.ClientInfo = mcp.Implementation{
@@ -41,7 +63,7 @@ func NewMCPTool(ctx context.Context, command string, args []string) (*MCPTool, e
 		Version: "1.0.0",
 	}
 
-	_, err = c.Initialize(ctx, initReq)
+	_, err := c.Initialize(ctx, initReq)
 	if err != nil {
 		c.Close()
 		return nil, fmt.Errorf("MCP initialize failed: %w", err)
@@ -60,27 +82,32 @@ func NewMCPTool(ctx context.Context, command string, args []string) (*MCPTool, e
 
 	return &MCPTool{
 		client:    c,
-		serverCmd: command,
+		name:      name,
+		serverCmd: label,
 		tools:     listResult.Tools,
 		toolMap:   toolMap,
 	}, nil
 }
 
 // newMCPToolFromClient creates an MCPTool from a pre-configured client (for testing)
-func newMCPToolFromClient(c MCPClient, tools []mcp.Tool) *MCPTool {
+func newMCPToolFromClient(c MCPClient, name string, tools []mcp.Tool) *MCPTool {
+	if name == "" {
+		name = "mcp"
+	}
 	toolMap := make(map[string]mcp.Tool, len(tools))
 	for _, t := range tools {
 		toolMap[t.Name] = t
 	}
 	return &MCPTool{
 		client:  c,
+		name:    name,
 		tools:   tools,
 		toolMap: toolMap,
 	}
 }
 
 func (m *MCPTool) Name() string {
-	return "mcp"
+	return m.name
 }
 
 func (m *MCPTool) Description() string {
