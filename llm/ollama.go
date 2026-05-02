@@ -59,9 +59,8 @@ func NewClient(model string) (*Client, error) {
 	return &Client{llm: llm, model: model}, nil
 }
 
-// Chat sends messages to the LLM and returns the response
-func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error) {
-	// Convert to langchaingo message format
+// convertMessages converts internal Message types to langchaingo format.
+func convertMessages(messages []Message) []llms.MessageContent {
 	var llmMessages []llms.MessageContent
 	for _, msg := range messages {
 		var role llms.ChatMessageType
@@ -82,8 +81,13 @@ func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error
 			Parts: []llms.ContentPart{llms.TextContent{Text: msg.Content}},
 		})
 	}
+	return llmMessages
+}
 
-	// Call the LLM
+// Chat sends messages to the LLM and returns the response
+func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error) {
+	llmMessages := convertMessages(messages)
+
 	resp, err := c.llm.GenerateContent(ctx, llmMessages)
 	if err != nil {
 		return nil, fmt.Errorf("llm generate failed: %w", err)
@@ -94,33 +98,13 @@ func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error
 	}
 
 	content := resp.Choices[0].Content
-	return c.parseResponse(content), nil
+	return parseResponse(content), nil
 }
 
 // ChatStream sends messages to the LLM and streams text responses in real-time.
 // Tool call responses (starting with '{') are buffered silently.
 func (c *Client) ChatStream(ctx context.Context, messages []Message, streamFunc func(chunk string)) (*Response, error) {
-	// Convert to langchaingo message format
-	var llmMessages []llms.MessageContent
-	for _, msg := range messages {
-		var role llms.ChatMessageType
-		switch msg.Role {
-		case "system":
-			role = llms.ChatMessageTypeSystem
-		case "user":
-			role = llms.ChatMessageTypeHuman
-		case "assistant":
-			role = llms.ChatMessageTypeAI
-		case "tool":
-			role = llms.ChatMessageTypeHuman
-		default:
-			role = llms.ChatMessageTypeHuman
-		}
-		llmMessages = append(llmMessages, llms.MessageContent{
-			Role:  role,
-			Parts: []llms.ContentPart{llms.TextContent{Text: msg.Content}},
-		})
-	}
+	llmMessages := convertMessages(messages)
 
 	var buf strings.Builder
 	streaming := false
@@ -155,11 +139,11 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, streamFunc 
 	}
 
 	content := resp.Choices[0].Content
-	return c.parseResponse(content), nil
+	return parseResponse(content), nil
 }
 
-// parseResponse extracts tool calls or final answer from LLM response
-func (c *Client) parseResponse(content string) *Response {
+// parseResponse extracts tool calls or final answer from LLM response.
+func parseResponse(content string) *Response {
 	resp := &Response{Content: content}
 
 	// Try to find JSON tool call in the response

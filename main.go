@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/rathore/langchain-agent/agent"
+	"github.com/rathore/langchain-agent/llm"
 	"github.com/rathore/langchain-agent/rag"
 	"github.com/rathore/langchain-agent/tools"
 )
@@ -46,7 +47,8 @@ func parseMCPSpec(spec string, index int) (name, target string) {
 }
 
 func main() {
-	model := flag.String("model", "llama3.1", "Ollama model to use")
+	backend := flag.String("backend", "ollama", "LLM backend: ollama or gemini")
+	model := flag.String("model", "", "Model name (default: llama3.1 for ollama, gemini-2.5-flash for gemini)")
 	maxIter := flag.Int("max-iter", 10, "Maximum agent iterations per query")
 	wikiPath := flag.String("wiki", "", "Path to Confluence HTML export to index and enable wiki tool")
 	qdrantURL := flag.String("qdrant", "http://localhost:6333", "Qdrant server URL")
@@ -55,7 +57,17 @@ func main() {
 	flag.Var(&mcpSpecs, "mcp", "MCP server (repeatable). Format: [label:]command-or-url")
 	flag.Parse()
 
-	fmt.Printf("LangChain Agent (model: %s)\n", *model)
+	// Set default model based on backend
+	if *model == "" {
+		switch *backend {
+		case "gemini":
+			*model = "gemini-2.5-flash"
+		default:
+			*model = "llama3.1"
+		}
+	}
+
+	fmt.Printf("LangChain Agent (backend: %s, model: %s)\n", *backend, *model)
 
 	// Initialize tools
 	toolList := []tools.Tool{
@@ -123,11 +135,35 @@ func main() {
 	fmt.Println("Type /help for commands")
 	fmt.Println("---")
 
+	// Create LLM client based on backend
+	var client llm.ChatClient
+	switch *backend {
+	case "gemini":
+		gc, err := llm.NewGeminiClient(*model)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Gemini client: %v\n", err)
+			os.Exit(1)
+		}
+		defer gc.Close()
+		client = gc
+	case "ollama":
+		c, err := llm.NewClient(*model)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Ollama client: %v\n", err)
+			os.Exit(1)
+		}
+		client = c
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown backend: %s (use 'ollama' or 'gemini')\n", *backend)
+		os.Exit(1)
+	}
+
 	// Create agent
 	ag, err := agent.New(agent.Config{
 		Model:   *model,
 		MaxIter: *maxIter,
 		Tools:   toolList,
+		Client:  client,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)

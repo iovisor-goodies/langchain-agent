@@ -6,8 +6,6 @@ import (
 )
 
 func TestParseResponse_ValidToolCall(t *testing.T) {
-	client := &Client{}
-
 	tests := []struct {
 		name       string
 		content    string
@@ -60,7 +58,7 @@ func TestParseResponse_ValidToolCall(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := client.parseResponse(tt.content)
+			resp := parseResponse(tt.content)
 
 			if len(resp.ToolCalls) == 0 {
 				t.Fatal("expected tool call, got none")
@@ -86,8 +84,6 @@ func TestParseResponse_ValidToolCall(t *testing.T) {
 }
 
 func TestParseResponse_ToolCallTruncatesHallucination(t *testing.T) {
-	client := &Client{}
-
 	tests := []struct {
 		name        string
 		content     string
@@ -112,7 +108,7 @@ func TestParseResponse_ToolCallTruncatesHallucination(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := client.parseResponse(tt.content)
+			resp := parseResponse(tt.content)
 			if len(resp.ToolCalls) == 0 {
 				t.Fatal("expected tool call, got none")
 			}
@@ -124,8 +120,6 @@ func TestParseResponse_ToolCallTruncatesHallucination(t *testing.T) {
 }
 
 func TestParseResponse_FinalAnswer(t *testing.T) {
-	client := &Client{}
-
 	tests := []struct {
 		name    string
 		content string
@@ -146,7 +140,7 @@ func TestParseResponse_FinalAnswer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := client.parseResponse(tt.content)
+			resp := parseResponse(tt.content)
 
 			if len(resp.ToolCalls) > 0 {
 				t.Errorf("expected no tool calls, got %d", len(resp.ToolCalls))
@@ -162,8 +156,6 @@ func TestParseResponse_FinalAnswer(t *testing.T) {
 }
 
 func TestParseResponse_MalformedJSON(t *testing.T) {
-	client := &Client{}
-
 	tests := []struct {
 		name    string
 		content string
@@ -188,7 +180,7 @@ func TestParseResponse_MalformedJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := client.parseResponse(tt.content)
+			resp := parseResponse(tt.content)
 
 			// Should not crash, should treat as final answer or no tool call
 			if len(resp.ToolCalls) > 0 && resp.ToolCalls[0].Name != "" {

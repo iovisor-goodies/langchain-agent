@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool calling (not ReAct) for reliability with small models.
+Portable autonomous agent loop using LangChainGo + Ollama/Gemini. Uses JSON tool calling (not ReAct) for reliability with small models.
 
 ## Status
 
@@ -17,6 +17,7 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 - ✅ Tool selection rules in prompt
 - ✅ Honest error reporting (no hallucination on failures)
 - ✅ Wiki RAG tool (Confluence HTML export with diagram support)
+- ✅ Gemini backend (Google AI, via `--backend gemini`, requires `GOOGLE_API_KEY`)
 
 **TODO:**
 - ✅ Streaming output
@@ -40,12 +41,43 @@ Portable autonomous agent loop using LangChainGo + Ollama. Uses JSON tool callin
 
 **Note:** MCP requires explicitly saying "mcp" in the prompt. Tool routing keywords are hardcoded in the system prompt (`llm/ollama.go:BuildSystemPrompt`). The MCP routing line is dynamically generated based on registered MCP tool names (`llm/ollama.go:mcpRoutingLine`).
 
+## Backends
+
+Two LLM backends are supported, selected via `--backend`. Both implement the same `llm.ChatClient` + `llm.StreamingChatClient` interface, so all tools (ssh, shell, mcp, wiki) and the agent loop behave identically across backends.
+
+### Ollama (default, local)
+
+```bash
+./langchain-agent                       # default model: llama3.1
+./langchain-agent --model llama3.2      # smaller/faster, less reliable for tool calling
+```
+- Requires Ollama running locally (default `http://localhost:11434`).
+- No API key needed.
+- llama3.1 is the recommended floor for reliable JSON tool calling.
+
+### Gemini (Google AI, cloud)
+
+```bash
+export GOOGLE_API_KEY="$(tr -d '[:space:]' < ~/gemini-api-key.txt)"
+./langchain-agent --backend gemini                       # default model: gemini-2.5-flash
+./langchain-agent --backend gemini --model gemini-2.5-pro
+```
+- Requires `GOOGLE_API_KEY` env var. The `langchaingo/llms/googleai` package reads it automatically.
+- Get a key from https://aistudio.google.com/apikey.
+- Verified working end-to-end: knowledge questions, shell tool dispatch, and SSH tool dispatch (including conversation context across turns).
+
+**Known quirks:**
+- `gemini-2.0-flash` returns HTTP 404 with langchaingo v0.1.14 even though it's listed in the API's models endpoint. Use `gemini-2.5-flash` (the project default) or newer.
+- API keys auto-expire after ~30 days of inactivity. The error message is `"API key expired. Please renew the API key."` even when the AI Studio dashboard doesn't flag the key as expired.
+
 ## Build and Test Commands
 
 ```bash
 go build -o langchain-agent .
-./langchain-agent                    # Run with default model (llama3.1)
-./langchain-agent -model llama3.2    # Use smaller/faster model (less reliable)
+./langchain-agent                                    # Run with default model (llama3.1)
+./langchain-agent -model llama3.2                    # Use smaller/faster model (less reliable)
+GOOGLE_API_KEY=... ./langchain-agent --backend gemini               # Gemini (default: gemini-2.5-flash)
+GOOGLE_API_KEY=... ./langchain-agent --backend gemini --model gemini-2.5-pro  # Gemini with specific model
 ./langchain-agent --wiki ~/wiki/     # Enable wiki RAG (requires Qdrant)
 ./langchain-agent --wiki ~/wiki/ --index-only  # Index only, then exit
 ./langchain-agent --mcp "mcp-filesystem-server /tmp"      # Single MCP server (stdio)
@@ -71,7 +103,8 @@ langchain-agent/
 │   ├── agent.go         # Agent loop (tool dispatch, history)
 │   └── agent_test.go    # Tests with mock LLM client
 ├── llm/
-│   ├── ollama.go        # Ollama client, JSON tool call parsing
+│   ├── ollama.go        # Ollama client, JSON tool call parsing, shared helpers
+│   ├── gemini.go        # Gemini client (Google AI)
 │   └── ollama_test.go   # Parsing tests
 ├── rag/
 │   ├── embeddings.go    # Ollama embeddings client (nomic-embed-text)
@@ -111,6 +144,7 @@ LangChainGo doesn't have first-class Ollama native tool calling in agent framewo
 ## Key Packages Used
 
 - `github.com/tmc/langchaingo/llms/ollama` - Ollama LLM integration
+- `github.com/tmc/langchaingo/llms/googleai` - Google AI (Gemini) integration
 - `github.com/tmc/langchaingo/embeddings` - Text embeddings
 - `github.com/mark3labs/mcp-go` - MCP client (stdio, SSE, Streamable HTTP transport)
 - `golang.org/x/crypto/ssh` - SSH client
