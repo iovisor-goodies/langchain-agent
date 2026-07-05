@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/rathore/langchain-agent/llm"
 	"github.com/rathore/langchain-agent/tools"
@@ -17,6 +18,7 @@ type Agent struct {
 	maxIter      int
 	history      []llm.Message
 	systemPrompt string
+	mu           sync.Mutex // serialises Run() and ClearHistory() across REPL + webhook callers
 }
 
 // Config holds agent configuration
@@ -67,6 +69,9 @@ func New(cfg Config) (*Agent, error) {
 
 // Run executes the agent with the given user input
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	// Build messages: system + history + new user input
 	messages := []llm.Message{
 		{Role: "system", Content: a.systemPrompt},
@@ -152,6 +157,8 @@ func (a *Agent) executeTool(ctx context.Context, tc llm.ToolCallParse) (string, 
 
 // ClearHistory clears the conversation history
 func (a *Agent) ClearHistory() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.history = nil
 }
 

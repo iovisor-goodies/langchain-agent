@@ -12,6 +12,7 @@ import (
 	"github.com/rathore/langchain-agent/llm"
 	"github.com/rathore/langchain-agent/rag"
 	"github.com/rathore/langchain-agent/tools"
+	"github.com/rathore/langchain-agent/webhook"
 )
 
 // stringSlice implements flag.Value for repeatable string flags.
@@ -55,6 +56,8 @@ func main() {
 	indexOnly := flag.Bool("index-only", false, "Only index the wiki, then exit")
 	var mcpSpecs stringSlice
 	flag.Var(&mcpSpecs, "mcp", "MCP server (repeatable). Format: [label:]command-or-url")
+	edgeHost := flag.String("edge", "", "Edge target user@host (Pi, mini-PC, NUC, ...) — enables edge_temp, edge_gpio, edge_camera tools")
+	webhookPort := flag.Int("webhook-port", 0, "If >0, start an HTTP webhook listener on this port (POST /webhook, GET /health)")
 	flag.Parse()
 
 	// Set default model based on backend
@@ -99,6 +102,15 @@ func main() {
 		defer mcpTool.Close()
 		toolList = append(toolList, mcpTool)
 		fmt.Printf("MCP server %q connected (%d tools discovered)\n", name, mcpTool.ToolCount())
+	}
+
+	// Edge sensor tools (only when --edge is provided)
+	if *edgeHost != "" {
+		toolList = append(toolList,
+			tools.NewEdgeTempTool(*edgeHost),
+			tools.NewEdgeGPIOTool(*edgeHost),
+		)
+		fmt.Printf("Edge sensor tools enabled (target: %s)\n", *edgeHost)
 	}
 
 	// Handle wiki indexing and tool setup
@@ -174,6 +186,16 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	ctx := context.Background()
 
+	// Webhook listener (only when --webhook-port is provided)
+	if *webhookPort > 0 {
+		go func() {
+			if err := webhook.Start(ctx, *webhookPort, ag); err != nil {
+				fmt.Fprintf(os.Stderr, "Webhook server error: %v\n", err)
+			}
+		}()
+		fmt.Printf("Webhook listener on :%d (POST /webhook, GET /health)\n", *webhookPort)
+	}
+
 	for {
 		fmt.Print("\n> ")
 		if !scanner.Scan() {
@@ -214,5 +236,12 @@ func main() {
 
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "Read error: %v\n", err)
+	}
+
+	// If a webhook listener is running, keep the process alive after REPL EOF
+	// (e.g. when launched as a daemon with stdin closed).
+	if *webhookPort > 0 {
+		fmt.Println("REPL closed; webhook listener still running. Ctrl+C to exit.")
+		select {}
 	}
 }

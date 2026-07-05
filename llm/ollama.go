@@ -234,6 +234,28 @@ func findMatchingBrace(s string) int {
 	return -1
 }
 
+// edgeRoutingLine builds routing hints for edge_* sensor tools, only including
+// lines for tools that are actually registered.
+func edgeRoutingLine(tools []ToolDef) string {
+	have := map[string]bool{}
+	for _, t := range tools {
+		if strings.HasPrefix(t.Name, "edge_") {
+			have[t.Name] = true
+		}
+	}
+	if len(have) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	if have["edge_temp"] {
+		sb.WriteString("- \"cpu temp\", \"temperature\", \"how hot\" on the pi/edge box → use \"edge_temp\" tool (no parameters)\n")
+	}
+	if have["edge_gpio"] {
+		sb.WriteString("- \"gpio\", \"pin\", \"read pin\", \"set pin\", \"turn on/off pin\" → use \"edge_gpio\" tool (params: pin, action='read'|'write', value='high'|'low', optional chip)\n")
+	}
+	return sb.String()
+}
+
 // mcpRoutingLine builds the MCP routing line for the system prompt.
 // Returns empty string if no MCP tools are present.
 func mcpRoutingLine(tools []ToolDef) string {
@@ -266,6 +288,7 @@ WHEN TO USE TOOLS:
 - Local machine operations, run commands, check files → use "shell" tool
 `)
 	sb.WriteString(mcpRoutingLine(tools))
+	sb.WriteString(edgeRoutingLine(tools))
 	sb.WriteString(`- "wiki", "confluence", "documentation", "diagram", "architecture" → use "wiki" tool
 
 WHEN NOT TO USE TOOLS (answer directly from your knowledge):
