@@ -56,8 +56,11 @@ Two LLM backends are supported, selected via `--backend`. Both implement the sam
 ```bash
 ./langchain-agent                       # default model: llama3.1
 ./langchain-agent --model llama3.2      # smaller/faster, less reliable for tool calling
+./langchain-agent --model qwen2.5:32b --ollama-url http://big-tower.local:11434  # remote Ollama host
 ```
-- Requires Ollama running locally (default `http://localhost:11434`).
+- Requires an Ollama server (default `http://localhost:11434`).
+- `--ollama-url` points at a remote Ollama host (e.g. a GPU tower on the LAN). Also honors `$OLLAMA_HOST` when the flag is unset. Ignored for the gemini backend.
+- The model must be pulled on the target server and expose the `tools` capability for reliable JSON tool calling — `qwen2.5:32b` and `llama3.1` both do; `llama3.2` (3B) works but is less reliable.
 - No API key needed.
 - llama3.1 is the recommended floor for reliable JSON tool calling.
 

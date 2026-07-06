@@ -37,7 +37,7 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.Client != nil {
 		client = cfg.Client
 	} else {
-		client, err = llm.NewClient(cfg.Model)
+		client, err = llm.NewClient(cfg.Model, "")
 		if err != nil {
 			return nil, err
 		}

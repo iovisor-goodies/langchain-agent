@@ -50,9 +50,15 @@ type ToolCallParse struct {
 	Params map[string]any `json:"parameters"`
 }
 
-// NewClient creates a new Ollama client
-func NewClient(model string) (*Client, error) {
-	llm, err := ollama.New(ollama.WithModel(model))
+// NewClient creates a new Ollama client. If serverURL is non-empty it points
+// the client at that Ollama server (e.g. "http://big-tower.local:11434");
+// otherwise langchaingo's default of http://localhost:11434 is used.
+func NewClient(model, serverURL string) (*Client, error) {
+	opts := []ollama.Option{ollama.WithModel(model)}
+	if serverURL != "" {
+		opts = append(opts, ollama.WithServerURL(serverURL))
+	}
+	llm, err := ollama.New(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ollama client: %w", err)
 	}
