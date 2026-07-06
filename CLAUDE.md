@@ -54,15 +54,17 @@ Two LLM backends are supported, selected via `--backend`. Both implement the sam
 ### Ollama (default, local)
 
 ```bash
-./langchain-agent                       # default model: llama3.1
+./langchain-agent                       # default model: qwen2.5:32b
+./langchain-agent --model llama3.1      # smaller, reliable floor for tool calling
 ./langchain-agent --model llama3.2      # smaller/faster, less reliable for tool calling
 ./langchain-agent --model qwen2.5:32b --ollama-url http://big-tower.local:11434  # remote Ollama host
 ```
 - Requires an Ollama server (default `http://localhost:11434`).
+- Default model is `qwen2.5:32b` — it needs a decent GPU, so on a modest local box pass `--model llama3.1` (or point `--ollama-url` at a GPU host that has qwen pulled).
 - `--ollama-url` points at a remote Ollama host (e.g. a GPU tower on the LAN). Also honors `$OLLAMA_HOST` when the flag is unset. Ignored for the gemini backend.
 - The model must be pulled on the target server and expose the `tools` capability for reliable JSON tool calling — `qwen2.5:32b` and `llama3.1` both do; `llama3.2` (3B) works but is less reliable.
 - No API key needed.
-- llama3.1 is the recommended floor for reliable JSON tool calling.
+- `llama3.1` is the recommended floor for reliable JSON tool calling; `qwen2.5:32b` is the default and most reliable when a GPU is available.
 
 ### Gemini (Google AI, cloud)
 
@@ -113,7 +115,7 @@ curl -s -X POST http://localhost:8090/webhook \
 
 ```bash
 go build -o langchain-agent .
-./langchain-agent                                    # Run with default model (llama3.1)
+./langchain-agent                                    # Run with default model (qwen2.5:32b)
 ./langchain-agent -model llama3.2                    # Use smaller/faster model (less reliable)
 GOOGLE_API_KEY=... ./langchain-agent --backend gemini               # Gemini (default: gemini-2.5-flash)
 GOOGLE_API_KEY=... ./langchain-agent --backend gemini --model gemini-2.5-pro  # Gemini with specific model

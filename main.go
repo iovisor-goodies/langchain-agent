@@ -49,7 +49,7 @@ func parseMCPSpec(spec string, index int) (name, target string) {
 
 func main() {
 	backend := flag.String("backend", "ollama", "LLM backend: ollama or gemini")
-	model := flag.String("model", "", "Model name (default: llama3.1 for ollama, gemini-2.5-flash for gemini)")
+	model := flag.String("model", "", "Model name (default: qwen2.5:32b for ollama, gemini-2.5-flash for gemini)")
 	ollamaURL := flag.String("ollama-url", "", "Ollama server URL (default: http://localhost:11434; also honors $OLLAMA_HOST). Ignored for gemini backend")
 	maxIter := flag.Int("max-iter", 10, "Maximum agent iterations per query")
 	wikiPath := flag.String("wiki", "", "Path to Confluence HTML export to index and enable wiki tool")
@@ -67,7 +67,7 @@ func main() {
 		case "gemini":
 			*model = "gemini-2.5-flash"
 		default:
-			*model = "llama3.1"
+			*model = "qwen2.5:32b"
 		}
 	}
 
