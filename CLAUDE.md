@@ -17,6 +17,7 @@ Portable autonomous agent loop using LangChainGo + Ollama/Gemini. Uses JSON tool
 - ✅ Tool selection rules in prompt
 - ✅ Honest error reporting (no hallucination on failures)
 - ✅ Wiki RAG tool (Confluence HTML export with diagram support)
+- ✅ Ollama backend (local or remote via `--ollama-url`; default model `qwen2.5:32b`)
 - ✅ Gemini backend (Google AI, via `--backend gemini`, requires `GOOGLE_API_KEY`)
 - ✅ Edge sensor tools (`edge_temp`, `edge_gpio` — SSH-based, portable across Pi and amd64 Linux, via `--edge user@host`)
 - ✅ HTTP webhook listener (`--webhook-port N` — `POST /webhook` runs the agent)
