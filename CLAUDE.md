@@ -112,6 +112,19 @@ curl -s -X POST http://localhost:8090/webhook \
      -d '{"prompt":"what is the cpu temp on the pi"}' | jq .
 ```
 
+Against a remote Ollama host (the GPU tower serves both the LLM backend and is
+the SSH target here). Closing stdin (`< /dev/null`) runs it headless — the REPL
+hits EOF and the process stays alive on the webhook keep-alive path:
+
+```bash
+./langchain-agent --ollama-url http://big-tower.local:11434 --webhook-port 8090 < /dev/null &
+curl -s http://localhost:8090/health                                    # → OK
+curl -s -X POST http://localhost:8090/webhook \
+     -H 'Content-Type: application/json' \
+     -d '{"prompt":"ssh to rathore@big-tower.local and run ollama ps to check what model is running"}' | jq .
+# → {"answer":"The model running on the server is qwen2.5:32b ..."}
+```
+
 ## Build and Test Commands
 
 ```bash
