@@ -26,8 +26,9 @@ Portable autonomous agent loop using LangChainGo + Ollama/Gemini. Uses JSON tool
 - ✅ Streaming output
 - ✅ Event-driven automation (HTTP webhook; cron/file-watch still open)
 - [ ] Domain knowledge improvements (command patterns)
-- [ ] Agent on the Pi (ARM64 build)
 - [ ] `edge_camera` tool (SSH capture via libcamera-still / ffmpeg-v4l2 fallback, scp back) — designed in `PLAN-event-sensor.md`, deferred for now
+
+**Out of scope (by design):** Running the agent *on* the Pi (ARM64-resident autonomous agent). This project is a workstation agent that *operates* edge devices remotely over SSH — the `edge_*` tools are SSH verbs in the multi-hop loop. An agent that runs on the Pi itself would be a separate project.
 
 ## Use Cases
 
